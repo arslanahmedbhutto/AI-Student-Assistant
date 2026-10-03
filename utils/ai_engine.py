@@ -1,10 +1,10 @@
 """
 AI-Student Assistant — Multi-Provider AI Engine
 Supports:
-  1. Groq (console.groq.com) — Ultra Fast Llama, Mixtral, Gemma
-  2. xAI Grok (console.x.ai) — Grok-2, Grok-beta
-  3. Google Gemini (aistudio.google.com) — Gemini 1.5 Flash, Gemini 2.0
-  4. OpenAI (platform.openai.com) — GPT-4o, GPT-4o-mini
+  1. Groq (console.groq.com)
+  2. xAI Grok (console.x.ai)
+  3. Google Gemini (aistudio.google.com)
+  4. OpenAI (platform.openai.com)
 """
 
 import os
@@ -15,7 +15,7 @@ import httpx
 load_dotenv()
 
 # ==========================================
-# PROVIDER CONFIGURATIONS
+# PROVIDER CONFIGURATIONS & MODELS
 # ==========================================
 PROVIDERS: Dict[str, Dict[str, Any]] = {
     "Groq": {
@@ -97,7 +97,7 @@ def is_valid_key_string(val: Optional[str]) -> bool:
         or "your_key" in lower
         or "your-key" in lower
         or "your-groq" in lower
-        or v.endswith("kDo5hi")  # Filter out old expired sample key
+        or v.endswith("kDo5hi")
     ):
         return False
     return True
@@ -125,50 +125,10 @@ def detect_provider_from_key(key: str) -> Optional[str]:
     return None
 
 
-def fetch_live_models_for_key(provider: str, api_key: str) -> List[str]:
-    """
-    Dynamically retrieve active models directly from the provider's /models endpoint.
-    """
-    cfg = PROVIDERS.get(provider)
-    if not cfg or not is_valid_key_string(api_key):
-        return []
-
-    endpoint = cfg["base_url"].rstrip("/") + "/models"
-    headers = {"Authorization": f"Bearer {api_key.strip()}"}
-
-    try:
-        with httpx.Client(timeout=10.0) as client:
-            resp = client.get(endpoint, headers=headers)
-            if resp.status_code == 200:
-                data = resp.json()
-                raw_models = [m["id"] for m in data.get("data", []) if "id" in m]
-                # Filter out embedding / audio-only models if needed
-                chat_models = [
-                    m for m in raw_models
-                    if not any(x in m.lower() for x in ["whisper", "embed", "tts", "moderation"])
-                ]
-                return sorted(chat_models) if chat_models else sorted(raw_models)
-    except Exception:
-        pass
-    return []
-
-
-def get_available_models_for_provider(provider: str, api_key: Optional[str] = None) -> List[str]:
-    """
-    Return available models for a provider, merging static defaults with
-    dynamically fetched models if a valid key is provided.
-    """
+def get_models_for_provider(provider: str) -> List[str]:
+    """Return the list of models attached to a specific provider."""
     cfg = PROVIDERS.get(provider, PROVIDERS["Groq"])
-    defaults = list(cfg["models"])
-
-    if api_key and is_valid_key_string(api_key):
-        live = fetch_live_models_for_key(provider, api_key)
-        if live:
-            # Put live models first, ensuring defaults are available
-            combined = live + [m for m in defaults if m not in live]
-            return combined
-
-    return defaults
+    return list(cfg["models"])
 
 
 def get_active_provider() -> str:
@@ -268,7 +228,7 @@ def get_active_api_key_info() -> Tuple[Optional[str], str, str]:
 def test_api_key(provider: str, api_key: str, model: Optional[str] = None) -> Tuple[bool, str]:
     """
     Test an API key by sending a minimal completion request to the provider.
-    Includes smart fallback to alternative models if the primary model is retired/unavailable.
+    Includes smart fallback to alternative models if a specific model returns 404.
     """
     if not is_valid_key_string(api_key):
         return False, "API key cannot be empty, expired, or a placeholder."
@@ -306,7 +266,7 @@ def test_api_key(provider: str, api_key: str, model: Optional[str] = None) -> Tu
                     except Exception:
                         err_msg = resp.text
                     last_error = f"API Error ({resp.status_code}): {err_msg}"
-                    # If 404 model not found, try the next model in candidate_models
+                    # If 404 (model not found/deprecated), try next model
                     if resp.status_code == 404:
                         continue
                     # For other errors (like 401 Unauthorized), stop immediately

@@ -3,17 +3,12 @@ AI-Student Assistant — Multi-Provider API & Model Settings
 Supports Groq (console.groq.com), xAI Grok (console.x.ai), Google Gemini, and OpenAI.
 """
 
+import importlib
 import streamlit as st
-from utils.ai_engine import (
-    PROVIDERS,
-    detect_provider_from_key,
-    get_active_provider,
-    get_active_model,
-    get_api_key_for_provider,
-    get_available_models_for_provider,
-    test_api_key,
-    is_valid_key_string,
-)
+import utils.ai_engine as ai_engine
+
+# Dynamically reload ai_engine to avoid any module cache mismatch
+importlib.reload(ai_engine)
 
 st.set_page_config(
     page_title="API Settings — AI-Student Assistant",
@@ -98,8 +93,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Determine current active provider
-active_p = get_active_provider()
-saved_key, saved_source = get_api_key_for_provider(active_p)
+active_p = ai_engine.get_active_provider()
+saved_key, saved_source = ai_engine.get_api_key_for_provider(active_p)
 
 col_config, col_overview = st.columns([3, 2])
 
@@ -107,13 +102,13 @@ with col_config:
     st.markdown('<div class="settings-card">', unsafe_allow_html=True)
     st.markdown("### 🔑 Universal API Key Setup")
     st.markdown(
-        '<p class="subtitle">Paste your key below. The engine detects your provider and configures the supported models automatically!</p>',
+        '<p class="subtitle">Paste your key below. The engine detects your provider and loads the supported models automatically!</p>',
         unsafe_allow_html=True,
     )
 
     current_input_val = st.session_state.get(
         "user_pasted_api_key",
-        saved_key if is_valid_key_string(saved_key) else "",
+        saved_key if ai_engine.is_valid_key_string(saved_key) else "",
     )
 
     raw_input_key = st.text_input(
@@ -126,7 +121,7 @@ with col_config:
 
     st.session_state["user_pasted_api_key"] = raw_input_key
 
-    detected = detect_provider_from_key(raw_input_key)
+    detected = ai_engine.detect_provider_from_key(raw_input_key)
 
     # Provider Resolution
     if detected:
@@ -134,7 +129,7 @@ with col_config:
         current_provider = detected
         st.session_state["active_ai_provider"] = detected
     else:
-        provider_names = list(PROVIDERS.keys())
+        provider_names = list(ai_engine.PROVIDERS.keys())
         current_provider = st.selectbox(
             "Or select provider manually:",
             options=provider_names,
@@ -143,19 +138,19 @@ with col_config:
         )
         st.session_state["active_ai_provider"] = current_provider
 
-    cfg = PROVIDERS[current_provider]
+    cfg = ai_engine.PROVIDERS[current_provider]
 
     # Action Buttons
     btn_c1, btn_c2, btn_c3 = st.columns([1.3, 1.2, 1])
 
     with btn_c1:
         if st.button(f"💾 Save & Use {current_provider}", use_container_width=True):
-            if is_valid_key_string(raw_input_key):
+            if ai_engine.is_valid_key_string(raw_input_key):
                 st.session_state[f"custom_key_{current_provider}"] = raw_input_key.strip()
                 st.session_state["active_ai_provider"] = current_provider
 
                 with st.spinner(f"Verifying {current_provider} key with {cfg['default_model']}..."):
-                    ok, msg = test_api_key(current_provider, raw_input_key.strip(), cfg["default_model"])
+                    ok, msg = ai_engine.test_api_key(current_provider, raw_input_key.strip(), cfg["default_model"])
                 if ok:
                     st.success(f"✅ {msg}")
                 else:
@@ -166,11 +161,11 @@ with col_config:
 
     with btn_c2:
         if st.button("🧪 Test Connection", use_container_width=True):
-            test_target = raw_input_key.strip() if is_valid_key_string(raw_input_key) else saved_key
-            if is_valid_key_string(test_target):
+            test_target = raw_input_key.strip() if ai_engine.is_valid_key_string(raw_input_key) else saved_key
+            if ai_engine.is_valid_key_string(test_target):
                 target_model = st.session_state.get(f"active_model_{current_provider}", cfg["default_model"])
                 with st.spinner(f"Testing {current_provider} with model '{target_model}'..."):
-                    ok, msg = test_api_key(current_provider, test_target, target_model)
+                    ok, msg = ai_engine.test_api_key(current_provider, test_target, target_model)
                 if ok:
                     st.success(f"✅ {msg}")
                 else:
@@ -188,8 +183,7 @@ with col_config:
     # Dynamic Model Selection for detected / active provider
     st.markdown("---")
     st.markdown(f"#### 🤖 {current_provider} Model Selection")
-    active_test_key = raw_input_key.strip() if is_valid_key_string(raw_input_key) else saved_key
-    provider_models = get_available_models_for_provider(current_provider, active_test_key)
+    provider_models = ai_engine.get_models_for_provider(current_provider)
     model_session_key = f"active_model_{current_provider}"
     cur_p_model = st.session_state.get(model_session_key, cfg["default_model"])
     model_idx = provider_models.index(cur_p_model) if cur_p_model in provider_models else 0
@@ -224,9 +218,9 @@ with col_overview:
     st.markdown('<div class="settings-card">', unsafe_allow_html=True)
     st.markdown("### 📡 Active Engine Status")
 
-    active_provider = get_active_provider()
-    active_model = get_active_model()
-    active_key, active_source = get_api_key_for_provider(active_provider)
+    active_provider = ai_engine.get_active_provider()
+    active_model = ai_engine.get_active_model()
+    active_key, active_source = ai_engine.get_api_key_for_provider(active_provider)
 
     if active_key:
         masked = f"...{active_key[-6:]}"

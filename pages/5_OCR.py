@@ -3,8 +3,15 @@ AI-Student Assistant — OCR Note Reader
 Supports Smart AI Vision OCR and Local Offline EasyOCR.
 """
 
+import importlib
 import streamlit as st
-from utils.ocr import extract_text_from_image, is_easyocr_available
+import utils.ocr as ocr_utils
+
+# Hot-reload utils.ocr to ensure newly installed packages and functions are loaded
+importlib.reload(ocr_utils)
+extract_text_from_image = getattr(ocr_utils, "extract_text_from_image")
+is_easyocr_available = getattr(ocr_utils, "is_easyocr_available", lambda: False)
+
 from utils.ai_engine import ask_ai, get_active_provider, get_active_api_key_info
 
 st.set_page_config(

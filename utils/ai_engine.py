@@ -5,9 +5,17 @@ Supports:
   2. xAI Grok (console.x.ai)
   3. Google Gemini (aistudio.google.com)
   4. OpenAI (platform.openai.com)
+
+Features:
+  - Dynamic live model fetching from provider endpoints
+  - Auto-detection of provider from key prefix
+  - Automatic fallback away from deprecated/decommissioned models
+  - In-memory caching for live model discovery
 """
 
 import os
+import time
+import hashlib
 from typing import Dict, Any, Tuple, Optional, List
 from dotenv import load_dotenv
 import httpx
@@ -15,26 +23,26 @@ import httpx
 load_dotenv()
 
 # ==========================================
-# PROVIDER CONFIGURATIONS & MODELS
+# PROVIDER CONFIGURATIONS & ACTIVE MODELS
+# (Up-to-date with Groq, xAI, Google, OpenAI official catalogs)
 # ==========================================
 PROVIDERS: Dict[str, Dict[str, Any]] = {
     "Groq": {
         "display_name": "Groq (console.groq.com)",
         "base_url": "https://api.groq.com/openai/v1",
-        "default_model": "llama-3.3-70b-versatile",
+        "default_model": "openai/gpt-oss-120b",
         "models": [
+            "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
+            "qwen/qwen3.8-27b",
             "llama-3.3-70b-versatile",
             "llama-3.1-8b-instant",
-            "mixtral-8x7b-32768",
-            "gemma2-9b-it",
-            "qwen-2.5-32b",
-            "deepseek-r1-distill-llama-70b",
         ],
         "env_var": "GROQ_API_KEY",
         "key_prefix": "gsk_",
         "signup_url": "https://console.groq.com/keys",
         "badge_color": "#F55036",
-        "desc": "Ultra-fast open weights inference engine (keys start with gsk_)",
+        "desc": "Ultra-fast inference engine (keys start with gsk_)",
     },
     "xAI (Grok)": {
         "display_name": "xAI Grok (console.x.ai)",
@@ -53,12 +61,13 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
     },
     "Google Gemini": {
         "display_name": "Google Gemini (aistudio.google.com)",
-        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
         "default_model": "gemini-1.5-flash",
         "models": [
             "gemini-1.5-flash",
             "gemini-1.5-pro",
             "gemini-2.0-flash",
+            "gemini-2.5-flash",
         ],
         "env_var": "GEMINI_API_KEY",
         "key_prefix": "AIzaSy",
@@ -73,6 +82,7 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
         "models": [
             "gpt-4o-mini",
             "gpt-4o",
+            "gpt-4-turbo",
             "gpt-3.5-turbo",
         ],
         "env_var": "OPENAI_API_KEY",
@@ -82,6 +92,10 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
         "desc": "Official ChatGPT models (keys start with sk-)",
     },
 }
+
+# In-memory cache for live models: cache_key -> (timestamp, list_of_models)
+_LIVE_MODELS_CACHE: Dict[str, Tuple[float, List[str]]] = {}
+CACHE_TTL_SECONDS = 180.0  # 3 minutes
 
 
 def is_valid_key_string(val: Optional[str]) -> bool:
@@ -125,9 +139,141 @@ def detect_provider_from_key(key: str) -> Optional[str]:
     return None
 
 
-def get_models_for_provider(provider: str) -> List[str]:
+def fetch_live_models_for_key(
+    provider: str,
+    api_key: Optional[str] = None,
+    force_refresh: bool = False,
+) -> Tuple[List[str], Optional[str]]:
+    """
+    Dynamically queries the provider's official /models API using the provided key.
+    Filters out non-chat (audio/speech/embedding) and decommissioned models.
+    Returns (models_list, error_message_or_None).
+    """
+    if not provider or provider not in PROVIDERS:
+        return [], f"Unknown provider: {provider}"
+
+    cfg = PROVIDERS[provider]
+    fallback_models = list(cfg["models"])
+
+    if not api_key:
+        api_key, _ = get_api_key_for_provider(provider)
+
+    if not is_valid_key_string(api_key):
+        return fallback_models, "No valid key provided. Using standard models."
+
+    key_clean = api_key.strip()
+    cache_key = f"{provider}:{hashlib.sha256(key_clean.encode()).hexdigest()[:16]}"
+    now = time.time()
+
+    if not force_refresh and cache_key in _LIVE_MODELS_CACHE:
+        cached_time, cached_models = _LIVE_MODELS_CACHE[cache_key]
+        if (now - cached_time) < CACHE_TTL_SECONDS:
+            return cached_models, None
+
+    headers = {
+        "Authorization": f"Bearer {key_clean}",
+        "Content-Type": "application/json",
+    }
+    models_url = f"{cfg['base_url'].rstrip('/')}/models"
+
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(models_url, headers=headers)
+
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_items = data.get("data", [])
+                if not raw_items and "models" in data:
+                    raw_items = data.get("models", [])
+
+                extracted: List[str] = []
+                for item in raw_items:
+                    if isinstance(item, dict):
+                        # Filter out explicitly inactive or deprecated models
+                        if item.get("active") is False or item.get("deprecated") is True:
+                            continue
+                        m_id = item.get("id") or item.get("name")
+                        if m_id:
+                            if m_id.startswith("models/"):
+                                m_id = m_id[len("models/"):]
+                            extracted.append(m_id)
+                    elif isinstance(item, str):
+                        extracted.append(item)
+
+                chat_models: List[str] = []
+                if provider == "Groq":
+                    # Exclude non-text/chat models (audio, whisper, tts, safeguard)
+                    non_chat_markers = (
+                        "whisper", "orpheus", "tts", "playai",
+                        "bge", "embedding", "safeguard", "guard"
+                    )
+                    filtered = [
+                        m for m in extracted
+                        if not any(marker in m.lower() for marker in non_chat_markers)
+                    ]
+                    # Prioritize latest flagship models at top
+                    priority_order = [
+                        "openai/gpt-oss-120b",
+                        "openai/gpt-oss-20b",
+                        "qwen/qwen3.8-27b",
+                        "llama-3.3-70b-versatile",
+                        "llama-3.1-8b-instant",
+                    ]
+                    for p in priority_order:
+                        if p in filtered and p not in chat_models:
+                            chat_models.append(p)
+                    for m in filtered:
+                        if m not in chat_models:
+                            chat_models.append(m)
+
+                elif provider == "Google Gemini":
+                    for m in extracted:
+                        if "gemini" in m.lower() and "embedding" not in m.lower():
+                            if m not in chat_models:
+                                chat_models.append(m)
+                    chat_models.sort(reverse=True)
+
+                elif provider == "OpenAI":
+                    valid_openai = [
+                        m for m in extracted
+                        if (m.startswith("gpt-") or m.startswith("o1-") or m.startswith("o3-"))
+                        and not any(x in m for x in ["audio", "realtime", "moderation", "tts", "embedding"])
+                    ]
+                    priority = ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo", "o1-mini"]
+                    for p in priority:
+                        if p in valid_openai and p not in chat_models:
+                            chat_models.append(p)
+                    for m in valid_openai:
+                        if m not in chat_models:
+                            chat_models.append(m)
+
+                elif provider == "xAI (Grok)":
+                    chat_models = [m for m in extracted if "grok" in m.lower()]
+
+                final_models = chat_models if chat_models else (extracted if extracted else fallback_models)
+                _LIVE_MODELS_CACHE[cache_key] = (now, final_models)
+                return final_models, None
+
+            elif resp.status_code in (401, 403):
+                return fallback_models, f"Authentication error ({resp.status_code}): Invalid API key for {provider}."
+            else:
+                return fallback_models, f"Notice ({resp.status_code}): Using fallback models."
+
+    except httpx.TimeoutException:
+        return fallback_models, "Live model query timed out. Using default models."
+    except Exception as e:
+        return fallback_models, f"Connection notice ({e}). Using default models."
+
+
+def get_models_for_provider(provider: str, api_key: Optional[str] = None) -> List[str]:
     """Return the list of models attached to a specific provider."""
     cfg = PROVIDERS.get(provider, PROVIDERS["Groq"])
+    if not api_key:
+        api_key, _ = get_api_key_for_provider(provider)
+    if is_valid_key_string(api_key):
+        live_list, err = fetch_live_models_for_key(provider, api_key)
+        if live_list:
+            return live_list
     return list(cfg["models"])
 
 
@@ -141,7 +287,7 @@ def get_active_provider() -> str:
     except Exception:
         pass
 
-    # Check if a custom key exists in session to auto-select provider
+    # Auto-detect from custom session keys
     try:
         import streamlit as st
 
@@ -198,7 +344,7 @@ def get_api_key_for_provider(provider: str) -> Tuple[Optional[str], str]:
     except Exception:
         pass
 
-    # 2. Local environment
+    # 2. Local environment (.env)
     load_dotenv(override=True)
     env_val = os.getenv(env_var, "").strip()
     if is_valid_key_string(env_val):
@@ -227,8 +373,10 @@ def get_active_api_key_info() -> Tuple[Optional[str], str, str]:
 
 def test_api_key(provider: str, api_key: str, model: Optional[str] = None) -> Tuple[bool, str]:
     """
-    Test an API key by sending a minimal completion request to the provider.
-    Includes smart fallback to alternative models if a specific model returns 404.
+    Test an API key by:
+    1. Fetching live models dynamically from provider endpoint.
+    2. Sending a minimal ping to verify completion.
+    3. Automatically skipping decommissioned or deprecated model IDs.
     """
     if not is_valid_key_string(api_key):
         return False, "API key cannot be empty, expired, or a placeholder."
@@ -237,10 +385,24 @@ def test_api_key(provider: str, api_key: str, model: Optional[str] = None) -> Tu
     if not cfg:
         return False, f"Unknown provider: {provider}"
 
-    endpoint = cfg["base_url"].rstrip("/") + "/chat/completions"
-    candidate_models = [model] if model else []
-    candidate_models += [m for m in cfg["models"] if m != model]
+    # Query live models for this key
+    live_models, live_err = fetch_live_models_for_key(provider, api_key, force_refresh=True)
+    if live_err and "Authentication error" in live_err:
+        return False, live_err
 
+    # Build candidates list: tested model first, then live models, then defaults
+    candidate_models: List[str] = []
+    if model and is_valid_key_string(model):
+        candidate_models.append(model)
+    if live_models:
+        for m in live_models:
+            if m not in candidate_models:
+                candidate_models.append(m)
+    for m in cfg["models"]:
+        if m not in candidate_models:
+            candidate_models.append(m)
+
+    endpoint = cfg["base_url"].rstrip("/") + "/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key.strip()}",
         "Content-Type": "application/json",
@@ -258,19 +420,32 @@ def test_api_key(provider: str, api_key: str, model: Optional[str] = None) -> Tu
             try:
                 resp = client.post(endpoint, headers=headers, json=payload)
                 if resp.status_code == 200:
-                    return True, f"Successfully authenticated with {provider} using model '{test_model}'!"
-                else:
-                    try:
-                        err_json = resp.json()
-                        err_msg = err_json.get("error", {}).get("message", resp.text)
-                    except Exception:
-                        err_msg = resp.text
-                    last_error = f"API Error ({resp.status_code}): {err_msg}"
-                    # If 404 (model not found/deprecated), try next model
-                    if resp.status_code == 404:
-                        continue
-                    # For other errors (like 401 Unauthorized), stop immediately
-                    break
+                    return True, f"Successfully authenticated with {provider}! Active model: '{test_model}'."
+
+                try:
+                    err_json = resp.json()
+                    err_msg = err_json.get("error", {}).get("message", resp.text)
+                except Exception:
+                    err_msg = resp.text
+
+                last_error = f"API Error ({resp.status_code}): {err_msg}"
+
+                # Check if error is due to decommissioned or missing model
+                is_model_error = (
+                    resp.status_code in (400, 404)
+                    and any(
+                        term in err_msg.lower()
+                        for term in ["decommissioned", "deprecated", "not found", "does not exist", "model"]
+                    )
+                )
+                if is_model_error:
+                    # Model is decommissioned/deprecated -> skip to next candidate!
+                    continue
+
+                if resp.status_code in (401, 403):
+                    return False, f"Authentication Failed ({resp.status_code}): {err_msg}"
+
+                break
             except httpx.ConnectError:
                 return False, f"Could not connect to {provider} endpoint. Check internet connection."
             except httpx.TimeoutException:
@@ -329,6 +504,14 @@ Explain concepts clearly, accurately, and step-by-step for a student."""
                     err_text = err_data.get("error", {}).get("message", resp.text)
                 except Exception:
                     err_text = resp.text
+
+                # If selected model was decommissioned, suggest updating in Settings
+                if "decommissioned" in err_text.lower() or "deprecated" in err_text.lower():
+                    return (
+                        f"⚠️ Model '{model}' has been decommissioned by {provider}.\n\n"
+                        f"Please go to **7_Settings** to select an active model (such as '{cfg['default_model']}')."
+                    )
+
                 return f"⚠️ {provider} Error ({resp.status_code}): {err_text}"
     except httpx.TimeoutException:
         return f"⚠️ Request timed out. The {provider} server took too long to respond. Please try again."

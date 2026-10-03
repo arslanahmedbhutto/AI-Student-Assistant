@@ -1,14 +1,14 @@
 """
 AI-Student Assistant — Multi-Provider AI Engine
 Supports:
-  1. xAI Grok (grok-2-latest, grok-beta) - https://console.x.ai/
-  2. Groq (Llama 3.3, Llama 3.1, Mixtral, Gemma 2) - https://console.groq.com/keys
-  3. Google Gemini (Gemini 1.5 Flash, Gemini 1.5 Pro, Gemini 2.0 Flash) - https://aistudio.google.com/app/apikey
-  4. OpenAI (GPT-4o, GPT-4o-mini, GPT-3.5) - https://platform.openai.com/api-keys
+  1. Groq (console.groq.com) — Ultra Fast Llama, Mixtral, Gemma
+  2. xAI Grok (console.x.ai) — Grok-2, Grok-beta
+  3. Google Gemini (aistudio.google.com) — Gemini 1.5 Flash, Gemini 2.0
+  4. OpenAI (platform.openai.com) — GPT-4o, GPT-4o-mini
 """
 
 import os
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional, List
 from dotenv import load_dotenv
 import httpx
 
@@ -18,8 +18,26 @@ load_dotenv()
 # PROVIDER CONFIGURATIONS
 # ==========================================
 PROVIDERS: Dict[str, Dict[str, Any]] = {
+    "Groq": {
+        "display_name": "Groq (console.groq.com)",
+        "base_url": "https://api.groq.com/openai/v1",
+        "default_model": "llama-3.3-70b-versatile",
+        "models": [
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it",
+            "qwen-2.5-32b",
+            "deepseek-r1-distill-llama-70b",
+        ],
+        "env_var": "GROQ_API_KEY",
+        "key_prefix": "gsk_",
+        "signup_url": "https://console.groq.com/keys",
+        "badge_color": "#F55036",
+        "desc": "Ultra-fast open weights inference engine (keys start with gsk_)",
+    },
     "xAI (Grok)": {
-        "display_name": "xAI (Grok)",
+        "display_name": "xAI Grok (console.x.ai)",
         "base_url": "https://api.x.ai/v1",
         "default_model": "grok-2-latest",
         "models": [
@@ -31,24 +49,10 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
         "key_prefix": "xai-",
         "signup_url": "https://console.x.ai/",
         "badge_color": "#000000",
-    },
-    "Groq": {
-        "display_name": "Groq (Llama / Mixtral)",
-        "base_url": "https://api.groq.com/openai/v1",
-        "default_model": "llama-3.3-70b-versatile",
-        "models": [
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "mixtral-8x7b-32768",
-            "gemma2-9b-it",
-        ],
-        "env_var": "GROQ_API_KEY",
-        "key_prefix": "gsk_",
-        "signup_url": "https://console.groq.com/keys",
-        "badge_color": "#F55036",
+        "desc": "Official Grok model series by xAI (keys start with xai-)",
     },
     "Google Gemini": {
-        "display_name": "Google Gemini",
+        "display_name": "Google Gemini (aistudio.google.com)",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "default_model": "gemini-1.5-flash",
         "models": [
@@ -60,9 +64,10 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
         "key_prefix": "AIzaSy",
         "signup_url": "https://aistudio.google.com/app/apikey",
         "badge_color": "#4285F4",
+        "desc": "Google AI Studio multimodal models (keys start with AIzaSy)",
     },
     "OpenAI": {
-        "display_name": "OpenAI (ChatGPT)",
+        "display_name": "OpenAI (platform.openai.com)",
         "base_url": "https://api.openai.com/v1",
         "default_model": "gpt-4o-mini",
         "models": [
@@ -74,6 +79,7 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
         "key_prefix": "sk-",
         "signup_url": "https://platform.openai.com/api-keys",
         "badge_color": "#10A37F",
+        "desc": "Official ChatGPT models (keys start with sk-)",
     },
 }
 
@@ -91,7 +97,7 @@ def is_valid_key_string(val: Optional[str]) -> bool:
         or "your_key" in lower
         or "your-key" in lower
         or "your-groq" in lower
-        or v.endswith("kDo5hi")  # Filter out known expired sample key
+        or v.endswith("kDo5hi")  # Filter out old expired sample key
     ):
         return False
     return True
@@ -100,23 +106,69 @@ def is_valid_key_string(val: Optional[str]) -> bool:
 def detect_provider_from_key(key: str) -> Optional[str]:
     """
     Auto-detect which provider an API key belongs to based on its prefix:
-    - xai-... -> xAI (Grok)
-    - gsk_... -> Groq
+    - gsk_... -> Groq (console.groq.com)
+    - xai-... -> xAI Grok (console.x.ai)
     - AIzaSy... or AIza... -> Google Gemini
     - sk-... or sk-proj-... -> OpenAI
     """
     if not key or not is_valid_key_string(key):
         return None
     k = key.strip()
-    if k.startswith("xai-"):
-        return "xAI (Grok)"
-    elif k.startswith("gsk_"):
+    if k.startswith("gsk_"):
         return "Groq"
+    elif k.startswith("xai-"):
+        return "xAI (Grok)"
     elif k.startswith("AIzaSy") or k.startswith("AIza"):
         return "Google Gemini"
     elif k.startswith("sk-") or k.startswith("sk-proj-"):
         return "OpenAI"
     return None
+
+
+def fetch_live_models_for_key(provider: str, api_key: str) -> List[str]:
+    """
+    Dynamically retrieve active models directly from the provider's /models endpoint.
+    """
+    cfg = PROVIDERS.get(provider)
+    if not cfg or not is_valid_key_string(api_key):
+        return []
+
+    endpoint = cfg["base_url"].rstrip("/") + "/models"
+    headers = {"Authorization": f"Bearer {api_key.strip()}"}
+
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(endpoint, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_models = [m["id"] for m in data.get("data", []) if "id" in m]
+                # Filter out embedding / audio-only models if needed
+                chat_models = [
+                    m for m in raw_models
+                    if not any(x in m.lower() for x in ["whisper", "embed", "tts", "moderation"])
+                ]
+                return sorted(chat_models) if chat_models else sorted(raw_models)
+    except Exception:
+        pass
+    return []
+
+
+def get_available_models_for_provider(provider: str, api_key: Optional[str] = None) -> List[str]:
+    """
+    Return available models for a provider, merging static defaults with
+    dynamically fetched models if a valid key is provided.
+    """
+    cfg = PROVIDERS.get(provider, PROVIDERS["Groq"])
+    defaults = list(cfg["models"])
+
+    if api_key and is_valid_key_string(api_key):
+        live = fetch_live_models_for_key(provider, api_key)
+        if live:
+            # Put live models first, ensuring defaults are available
+            combined = live + [m for m in defaults if m not in live]
+            return combined
+
+    return defaults
 
 
 def get_active_provider() -> str:
@@ -133,20 +185,20 @@ def get_active_provider() -> str:
     try:
         import streamlit as st
 
-        for p_name in PROVIDERS:
+        for p_name in ["Groq", "xAI (Grok)", "Google Gemini", "OpenAI"]:
             val = st.session_state.get(f"custom_key_{p_name}", "")
             if is_valid_key_string(val):
                 return p_name
     except Exception:
         pass
 
-    return "xAI (Grok)"
+    return "Groq"
 
 
 def get_active_model() -> str:
     """Return the currently selected model for the active provider."""
     provider = get_active_provider()
-    cfg = PROVIDERS.get(provider, PROVIDERS["xAI (Grok)"])
+    cfg = PROVIDERS.get(provider, PROVIDERS["Groq"])
     try:
         import streamlit as st
 
@@ -166,7 +218,7 @@ def get_api_key_for_provider(provider: str) -> Tuple[Optional[str], str]:
     2. Local .env file
     3. Streamlit Cloud Secrets (st.secrets)
     """
-    cfg = PROVIDERS.get(provider, PROVIDERS["xAI (Grok)"])
+    cfg = PROVIDERS.get(provider, PROVIDERS["Groq"])
     env_var = cfg["env_var"]
 
     # 1. Custom key saved in Streamlit session state
@@ -216,7 +268,7 @@ def get_active_api_key_info() -> Tuple[Optional[str], str, str]:
 def test_api_key(provider: str, api_key: str, model: Optional[str] = None) -> Tuple[bool, str]:
     """
     Test an API key by sending a minimal completion request to the provider.
-    Includes smart fallback (e.g. grok-2-latest -> grok-beta for xAI).
+    Includes smart fallback to alternative models if the primary model is retired/unavailable.
     """
     if not is_valid_key_string(api_key):
         return False, "API key cannot be empty, expired, or a placeholder."
@@ -226,46 +278,47 @@ def test_api_key(provider: str, api_key: str, model: Optional[str] = None) -> Tu
         return False, f"Unknown provider: {provider}"
 
     endpoint = cfg["base_url"].rstrip("/") + "/chat/completions"
-    test_model = model or cfg["default_model"]
+    candidate_models = [model] if model else []
+    candidate_models += [m for m in cfg["models"] if m != model]
 
     headers = {
         "Authorization": f"Bearer {api_key.strip()}",
         "Content-Type": "application/json",
     }
-    payload = {
-        "model": test_model,
-        "messages": [{"role": "user", "content": "hi"}],
-        "max_tokens": 3,
-    }
 
-    try:
-        with httpx.Client(timeout=15.0) as client:
-            resp = client.post(endpoint, headers=headers, json=payload)
-            if resp.status_code == 200:
-                return True, f"Successfully authenticated with {provider} using {test_model}!"
+    last_error = ""
 
-            # If xAI and grok-2-latest returned 404, retry with grok-beta
-            if provider == "xAI (Grok)" and resp.status_code == 404 and test_model != "grok-beta":
-                payload["model"] = "grok-beta"
-                resp_retry = client.post(endpoint, headers=headers, json=payload)
-                if resp_retry.status_code == 200:
-                    return True, f"Successfully authenticated with {provider} using grok-beta!"
-
-            # Parse error
+    with httpx.Client(timeout=15.0) as client:
+        for test_model in candidate_models:
+            payload = {
+                "model": test_model,
+                "messages": [{"role": "user", "content": "ping"}],
+                "max_tokens": 3,
+            }
             try:
-                err_json = resp.json()
-                err_msg = err_json.get("error", {}).get("message", resp.text)
-            except Exception:
-                err_msg = resp.text
+                resp = client.post(endpoint, headers=headers, json=payload)
+                if resp.status_code == 200:
+                    return True, f"Successfully authenticated with {provider} using model '{test_model}'!"
+                else:
+                    try:
+                        err_json = resp.json()
+                        err_msg = err_json.get("error", {}).get("message", resp.text)
+                    except Exception:
+                        err_msg = resp.text
+                    last_error = f"API Error ({resp.status_code}): {err_msg}"
+                    # If 404 model not found, try the next model in candidate_models
+                    if resp.status_code == 404:
+                        continue
+                    # For other errors (like 401 Unauthorized), stop immediately
+                    break
+            except httpx.ConnectError:
+                return False, f"Could not connect to {provider} endpoint. Check internet connection."
+            except httpx.TimeoutException:
+                return False, f"Connection to {provider} timed out after 15 seconds."
+            except Exception as e:
+                return False, f"Connection error: {e}"
 
-            return False, f"API Error ({resp.status_code}): {err_msg}"
-
-    except httpx.ConnectError:
-        return False, f"Could not connect to {provider} endpoint. Check internet connection."
-    except httpx.TimeoutException:
-        return False, f"Connection to {provider} timed out after 15 seconds."
-    except Exception as e:
-        return False, f"Connection error: {e}"
+    return False, last_error or "Authentication test failed."
 
 
 def ask_ai(prompt: str, language: str = "English") -> str:
@@ -282,7 +335,7 @@ def ask_ai(prompt: str, language: str = "English") -> str:
             f"or switch to another configured provider."
         )
 
-    cfg = PROVIDERS.get(provider, PROVIDERS["xAI (Grok)"])
+    cfg = PROVIDERS.get(provider, PROVIDERS["Groq"])
     endpoint = cfg["base_url"].rstrip("/") + "/chat/completions"
     model = get_active_model()
 

@@ -2,6 +2,8 @@
 
 <div align="center">
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-aistudentassistant.streamlit.app-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://aistudentassistant.streamlit.app/)
+
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.40%2B-FF4B4B?logo=streamlit&logoColor=white)
 ![FAISS](https://img.shields.io/badge/Vector%20DB-FAISS-008080)
@@ -13,9 +15,17 @@
 **An intelligent, multi-provider AI learning workspace engineered for university students and educators.**  
 *Chat with an AI Tutor · Grounded Textbook RAG Q&A · High-Yield Summaries · Exam Quiz Generator · Hybrid Vision/EasyOCR · Universal Key Auto-Detection*
 
-[Explore Screenshots](#-application-walkthrough--screenshots) · [Quickstart](#-quickstart-guide) · [Architecture](#-how-the-rag-pipeline-works) · [Tech Stack](#-tech-stack)
+### 🌐 [Launch Live App: aistudentassistant.streamlit.app](https://aistudentassistant.streamlit.app/)
+
+[Live App](https://aistudentassistant.streamlit.app/) · [Explore Screenshots](#-application-walkthrough--screenshots) · [Quickstart](#-quickstart-guide) · [Architecture](#-how-the-rag-pipeline-works) · [Tech Stack](#-tech-stack)
 
 </div>
+
+---
+
+> 🚀 **Public Web Access:**  
+> The application is live and publicly available. No local installation is required to start studying:  
+> 👉 **[https://aistudentassistant.streamlit.app/](https://aistudentassistant.streamlit.app/)**
 
 ---
 
@@ -164,59 +174,25 @@ The Universal Engine in [`utils/ai_engine.py`](utils/ai_engine.py) auto-detects 
 
 ---
 
-## 🗂 Project Structure
+## 🌐 Public Live Web Application
 
-```
-AI-Student-Assistant/
-├── app.py                     # Main SaaS landing view & system status overview
-├── requirements.txt           # Production dependencies
-├── pytest.ini                 # Pytest configuration
-├── .env                       # Local environment variables
-│
-├── pages/                     # Streamlit Multipage Applications
-│   ├── 1_AI_Chat.py           # Trilingual AI Study Tutor Chat
-│   ├── 2_PDF_Assistant.py     # Grounded Textbook RAG Q&A & Document Tools
-│   ├── 3_Summarizer.py        # High-Yield Note Summarizer
-│   ├── 4_Quiz.py              # Interactive MCQ Quiz Generator
-│   ├── 5_OCR.py               # Hybrid AI Vision & EasyOCR Note Reader
-│   ├── 6_History.py           # Unified Session Activity Dashboard
-│   └── 7_Settings.py          # Multi-Provider Key Setup & Model Discovery
-│
-├── rag/                       # RAG Pipeline Core
-│   ├── chunking.py            # Recursive character splitting
-│   ├── embeddings.py          # Embedding generation (Ollama & Offline fallbacks)
-│   ├── vector_store.py        # FAISS vector store wrapper
-│   ├── retriever.py           # Top-k similarity retrieval
-│   └── rag_engine.py          # End-to-end RAG orchestrator
-│
-├── utils/                     # Utility Services
-│   ├── ai_engine.py           # Universal Multi-Provider LLM Engine
-│   ├── pdf_reader.py          # In-memory PDF text extraction
-│   └── ocr.py                 # Hybrid Vision & EasyOCR transcription engine
-│
-├── outputscreen/              # Application screenshots & visual walkthrough
-│   ├── mainscreen.png         # Landing page hero
-│   ├── mainscreen2.png        # Feature cards overview
-│   ├── mainscreen3.png        # 3-Step workflow & CTA
-│   ├── aichat.png             # Tutor chat header & controls
-│   ├── aichat1.png            # Multi-turn Q&A thread
-│   ├── aichat2.png            # Detailed explanation view
-│   ├── pdf assistant.png      # PDF upload & RAG indexing
-│   ├── pdf assistant1.png     # Grounded document Q&A & source viewer
-│   ├── summarizer.png         # Note summarizer interface
-│   ├── quiz generator..png    # MCQ practice quiz view
-│   ├── ocr.png                # Hybrid OCR note reader
-│   ├── history.png            # Unified session timeline
-│   └── settings.png           # Multi-provider settings & live models
-│
-└── tests/                     # Automated Test Suite (13 passing tests)
-    ├── test_rag.py            # Offline RAG unit tests
-    └── test_ai_engine.py     # Provider detection, key validation & OCR tests
-```
+The platform is officially deployed and accessible to all students and educators worldwide:
+
+<div align="center">
+
+### 🔗 [https://aistudentassistant.streamlit.app/](https://aistudentassistant.streamlit.app/)
+
+</div>
+
+- **Instant Access:** Runs directly in any web browser on desktop, laptop, tablet, or smartphone.
+- **BYOK (Bring Your Own Key):** Easily enter your personal key in the **Settings** menu for unlimited usage with your preferred AI provider.
+- **Secure & Ephemeral:** Your session keys and uploaded documents stay in your active browser session and are never persisted to a remote server database.
 
 ---
 
-## 🚀 Quickstart Guide
+## 🚀 Local Development Setup (Optional)
+
+If you wish to run or develop the project locally on your machine:
 
 ### 1. Clone & Set Up Virtual Environment
 
@@ -256,7 +232,7 @@ GEMINI_API_KEY=AIzaSy_your_gemini_api_key_here
 OPENAI_API_KEY=sk-your_openai_api_key_here
 ```
 
-### 4. Run the Application
+### 4. Run Locally
 
 ```bash
 streamlit run app.py
@@ -279,21 +255,6 @@ tests/test_ai_engine.py ...... [ 46%]  # Auto-detection, prefix validation, live
 tests/test_rag.py .......      [100%]  # Chunking bounds, FAISS nearest neighbor, top-k retrieval, empty checks
 ============================= 13 passed in 13.38s =============================
 ```
-
----
-
-## ☁️ Deployment on Streamlit Community Cloud
-
-1. Fork or push this repository to your GitHub account.
-2. Log in to [Streamlit Community Cloud](https://share.streamlit.io/).
-3. Select your repository, set the main file path to `app.py`, and deploy!
-4. In **Settings > Secrets**, add your default API keys:
-   ```toml
-   GROQ_API_KEY = "gsk_..."
-   GEMINI_API_KEY = "AIzaSy..."
-   OPENAI_API_KEY = "sk-..."
-   XAI_API_KEY = "xai-..."
-   ```
 
 ---
 

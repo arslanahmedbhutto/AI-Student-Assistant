@@ -3,7 +3,7 @@ AI-Student Assistant — AI Chat Page
 """
 
 import streamlit as st
-from utils.ai_engine import ask_ai
+from utils.ai_engine import ask_ai, get_active_api_key_info
 
 # ── Page Config ──────────────────────────────
 st.set_page_config(
@@ -15,15 +15,17 @@ st.set_page_config(
 # ── CSS (Light & High Contrast) ──────────────
 st.markdown("""
 <style>
-.stApp {
-    background-color: #F8FAFC !important;
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+html, body, [class*="css"], .stApp {
+    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif !important;
+    background-color: #FAFAFC !important;
     color: #0F172A !important;
 }
 
 /* Page Header */
 .page-header {
     background: #FFFFFF;
-    border: 1px solid #E2E8F0;
+    border: 1px solid #EAECEF;
     border-radius: 16px;
     padding: 24px 30px;
     margin-bottom: 20px;
@@ -31,8 +33,8 @@ st.markdown("""
 }
 .page-header h1 {
     color: #0F172A !important;
-    font-size: 30px !important;
-    font-weight: 700 !important;
+    font-size: 28px !important;
+    font-weight: 800 !important;
     margin: 0 0 6px 0 !important;
 }
 .page-header p {
@@ -44,7 +46,7 @@ st.markdown("""
 /* Chat Messages */
 [data-testid="stChatMessage"] {
     background-color: #FFFFFF !important;
-    border: 1px solid #E2E8F0 !important;
+    border: 1px solid #EAECEF !important;
     border-radius: 14px !important;
     padding: 16px 20px !important;
     margin-bottom: 12px !important;
@@ -84,6 +86,14 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# Check active API key
+active_key, _ = get_active_api_key_info()
+if not active_key:
+    st.info(
+        "💡 **Student Tip:** To enable AI answers, go to the **7_Settings** page in the left sidebar "
+        "and paste your free Groq API key (free at [console.groq.com/keys](https://console.groq.com/keys))."
+    )
+
 # ── Controls Bar ─────────────────────────────
 col1, col2 = st.columns([3, 1])
 with col1:
@@ -106,7 +116,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "assistant",
-            "content": "👋 **Hello! I am your AI-Student Assistant.**\n\nWhat subject or topic are you studying today? You can ask me to explain concepts, solve homework questions, or summarize topics.",
+            "content": "👋 **Hello! I am your AI-Student Assistant.**\n\nWhat subject or topic are you studying today? You can ask me to explain concepts, solve homework problems, or summarize topics.",
         }
     ]
 

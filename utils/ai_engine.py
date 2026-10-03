@@ -1,10 +1,10 @@
 """
 AI-Student Assistant — Multi-Provider AI Engine
 Supports:
-  1. Groq (Llama 3.3, Llama 3.1, Mixtral, Gemma 2)
-  2. OpenAI (GPT-4o, GPT-4o-mini, GPT-3.5)
-  3. Google Gemini (Gemini 1.5 Flash, Gemini 1.5 Pro, Gemini 2.0 Flash)
-  4. xAI Grok (Grok-2, Grok-beta)
+  1. xAI Grok (grok-2-latest, grok-beta) - https://console.x.ai/
+  2. Groq (Llama 3.3, Llama 3.1, Mixtral, Gemma 2) - https://console.groq.com/keys
+  3. Google Gemini (Gemini 1.5 Flash, Gemini 1.5 Pro, Gemini 2.0 Flash) - https://aistudio.google.com/app/apikey
+  4. OpenAI (GPT-4o, GPT-4o-mini, GPT-3.5) - https://platform.openai.com/api-keys
 """
 
 import os
@@ -18,8 +18,22 @@ load_dotenv()
 # PROVIDER CONFIGURATIONS
 # ==========================================
 PROVIDERS: Dict[str, Dict[str, Any]] = {
+    "xAI (Grok)": {
+        "display_name": "xAI (Grok)",
+        "base_url": "https://api.x.ai/v1",
+        "default_model": "grok-2-latest",
+        "models": [
+            "grok-2-latest",
+            "grok-beta",
+            "grok-vision-beta",
+        ],
+        "env_var": "XAI_API_KEY",
+        "key_prefix": "xai-",
+        "signup_url": "https://console.x.ai/",
+        "badge_color": "#000000",
+    },
     "Groq": {
-        "display_name": "Groq (Free & Ultra Fast)",
+        "display_name": "Groq (Llama / Mixtral)",
         "base_url": "https://api.groq.com/openai/v1",
         "default_model": "llama-3.3-70b-versatile",
         "models": [
@@ -29,11 +43,12 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
             "gemma2-9b-it",
         ],
         "env_var": "GROQ_API_KEY",
-        "placeholder": "gsk_...",
+        "key_prefix": "gsk_",
         "signup_url": "https://console.groq.com/keys",
+        "badge_color": "#F55036",
     },
     "Google Gemini": {
-        "display_name": "Google Gemini (Free Tier)",
+        "display_name": "Google Gemini",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "default_model": "gemini-1.5-flash",
         "models": [
@@ -42,8 +57,9 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
             "gemini-2.0-flash",
         ],
         "env_var": "GEMINI_API_KEY",
-        "placeholder": "AIzaSy...",
+        "key_prefix": "AIzaSy",
         "signup_url": "https://aistudio.google.com/app/apikey",
+        "badge_color": "#4285F4",
     },
     "OpenAI": {
         "display_name": "OpenAI (ChatGPT)",
@@ -55,22 +71,46 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
             "gpt-3.5-turbo",
         ],
         "env_var": "OPENAI_API_KEY",
-        "placeholder": "sk-...",
+        "key_prefix": "sk-",
         "signup_url": "https://platform.openai.com/api-keys",
-    },
-    "xAI (Grok)": {
-        "display_name": "xAI (Grok API)",
-        "base_url": "https://api.x.ai/v1",
-        "default_model": "grok-2-latest",
-        "models": [
-            "grok-2-latest",
-            "grok-beta",
-        ],
-        "env_var": "XAI_API_KEY",
-        "placeholder": "xai-...",
-        "signup_url": "https://console.x.ai/",
+        "badge_color": "#10A37F",
     },
 }
+
+
+def is_valid_key_string(val: Optional[str]) -> bool:
+    """Filter out empty strings and placeholder values."""
+    if not val:
+        return False
+    v = val.strip()
+    if not v:
+        return False
+    lower = v.lower()
+    if lower.startswith("replace_") or "your_key" in lower or "your-key" in lower:
+        return False
+    return True
+
+
+def detect_provider_from_key(key: str) -> Optional[str]:
+    """
+    Auto-detect which provider an API key belongs to based on its prefix:
+    - xai-... -> xAI (Grok)
+    - gsk_... -> Groq
+    - AIzaSy... or AIza... -> Google Gemini
+    - sk-... or sk-proj-... -> OpenAI
+    """
+    if not key or not is_valid_key_string(key):
+        return None
+    k = key.strip()
+    if k.startswith("xai-"):
+        return "xAI (Grok)"
+    elif k.startswith("gsk_"):
+        return "Groq"
+    elif k.startswith("AIzaSy") or k.startswith("AIza"):
+        return "Google Gemini"
+    elif k.startswith("sk-") or k.startswith("sk-proj-"):
+        return "OpenAI"
+    return None
 
 
 def get_active_provider() -> str:
@@ -82,13 +122,25 @@ def get_active_provider() -> str:
             return st.session_state["active_ai_provider"]
     except Exception:
         pass
-    return "Groq"
+
+    # Check if a custom key exists that can auto-select provider
+    try:
+        import streamlit as st
+
+        for p_name in PROVIDERS:
+            val = st.session_state.get(f"custom_key_{p_name}", "")
+            if is_valid_key_string(val):
+                return p_name
+    except Exception:
+        pass
+
+    return "xAI (Grok)"
 
 
 def get_active_model() -> str:
     """Return the currently selected model for the active provider."""
     provider = get_active_provider()
-    cfg = PROVIDERS.get(provider, PROVIDERS["Groq"])
+    cfg = PROVIDERS.get(provider, PROVIDERS["xAI (Grok)"])
     try:
         import streamlit as st
 
@@ -108,7 +160,7 @@ def get_api_key_for_provider(provider: str) -> Tuple[Optional[str], str]:
     2. Local .env file
     3. Streamlit Cloud Secrets (st.secrets)
     """
-    cfg = PROVIDERS.get(provider, PROVIDERS["Groq"])
+    cfg = PROVIDERS.get(provider, PROVIDERS["xAI (Grok)"])
     env_var = cfg["env_var"]
 
     # 1. Custom key saved in Streamlit session state
@@ -116,23 +168,22 @@ def get_api_key_for_provider(provider: str) -> Tuple[Optional[str], str]:
         import streamlit as st
 
         session_key = f"custom_key_{provider}"
-        if session_key in st.session_state and st.session_state[session_key]:
-            val = st.session_state[session_key].strip()
-            if val:
-                return val, "Personal Session Key"
+        if session_key in st.session_state:
+            val = st.session_state[session_key]
+            if is_valid_key_string(val):
+                return val.strip(), "Personal Session Key"
 
-        # Legacy backward-compatibility for general groq key
         if provider == "Groq" and "custom_groq_api_key" in st.session_state:
-            val = st.session_state["custom_groq_api_key"].strip()
-            if val:
-                return val, "Personal Session Key"
+            val = st.session_state["custom_groq_api_key"]
+            if is_valid_key_string(val):
+                return val.strip(), "Personal Session Key"
     except Exception:
         pass
 
     # 2. Local environment
     load_dotenv(override=True)
     env_val = os.getenv(env_var, "").strip()
-    if env_val:
+    if is_valid_key_string(env_val):
         return env_val, f"Local Environment ({env_var})"
 
     # 3. Streamlit Cloud Secrets
@@ -141,7 +192,7 @@ def get_api_key_for_provider(provider: str) -> Tuple[Optional[str], str]:
 
         if env_var in st.secrets:
             secret_val = st.secrets.get(env_var, "").strip()
-            if secret_val:
+            if is_valid_key_string(secret_val):
                 return secret_val, f"Streamlit Secrets ({env_var})"
     except Exception:
         pass
@@ -160,8 +211,8 @@ def test_api_key(provider: str, api_key: str, model: Optional[str] = None) -> Tu
     """
     Test an API key by sending a minimal completion request to the provider.
     """
-    if not api_key or not api_key.strip():
-        return False, "API key cannot be empty."
+    if not is_valid_key_string(api_key):
+        return False, "API key cannot be empty or a placeholder."
 
     cfg = PROVIDERS.get(provider)
     if not cfg:
@@ -184,7 +235,7 @@ def test_api_key(provider: str, api_key: str, model: Optional[str] = None) -> Tu
         with httpx.Client(timeout=15.0) as client:
             resp = client.post(endpoint, headers=headers, json=payload)
             if resp.status_code == 200:
-                return True, f"Successfully authenticated with {provider} ({test_model})!"
+                return True, f"Successfully authenticated with {provider} using {test_model}!"
             else:
                 try:
                     err_json = resp.json()
@@ -214,7 +265,7 @@ def ask_ai(prompt: str, language: str = "English") -> str:
             f"or switch to another configured provider."
         )
 
-    cfg = PROVIDERS.get(provider, PROVIDERS["Groq"])
+    cfg = PROVIDERS.get(provider, PROVIDERS["xAI (Grok)"])
     endpoint = cfg["base_url"].rstrip("/") + "/chat/completions"
     model = get_active_model()
 

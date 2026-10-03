@@ -3,7 +3,6 @@ AI-Student Assistant — Multi-Provider API & Model Settings
 Supports xAI (Grok), Groq, Google Gemini, and OpenAI with Auto-Detection.
 """
 
-import os
 import streamlit as st
 from utils.ai_engine import (
     PROVIDERS,
@@ -12,6 +11,7 @@ from utils.ai_engine import (
     get_active_model,
     get_api_key_for_provider,
     test_api_key,
+    is_valid_key_string,
 )
 
 st.set_page_config(
@@ -96,8 +96,9 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Current active state
+# Determine current active provider
 active_p = get_active_provider()
+saved_key, saved_source = get_api_key_for_provider(active_p)
 
 col_config, col_overview = st.columns([3, 2])
 
@@ -105,37 +106,39 @@ with col_config:
     st.markdown('<div class="settings-card">', unsafe_allow_html=True)
     st.markdown("### 🔑 Universal API Key Setup")
     st.markdown(
-        '<p class="subtitle">Paste your key below. Whether it is <strong>xAI (Grok)</strong>, '
-        '<strong>Groq</strong>, <strong>Google Gemini</strong>, or <strong>OpenAI</strong>, '
-        'the system detects it automatically!</p>',
+        '<p class="subtitle">Paste your fresh API key below. The system automatically detects whether it belongs to '
+        '<strong>xAI (Grok)</strong>, <strong>Groq</strong>, <strong>Google Gemini</strong>, or <strong>OpenAI</strong>!</p>',
         unsafe_allow_html=True,
     )
 
-    # Preload current active key if available
-    saved_key, saved_source = get_api_key_for_provider(active_p)
+    # Use a clean session-backed input
+    current_input_val = st.session_state.get("user_pasted_api_key", saved_key if is_valid_key_string(saved_key) else "")
+
     raw_input_key = st.text_input(
-        "Paste your API Key:",
-        value=saved_key if saved_key else "",
+        "Paste your fresh API Key here:",
+        value=current_input_val,
         type="password",
-        placeholder="e.g. xai-... or gsk_... or AIzaSy... or sk-...",
+        placeholder="Paste your key: xai-... or gsk_... or AIzaSy... or sk-...",
         help="Paste your personal API key. Provider is auto-detected.",
     )
+
+    # Update session state with what's typed
+    st.session_state["user_pasted_api_key"] = raw_input_key
 
     detected = detect_provider_from_key(raw_input_key)
 
     # Provider Resolution
     if detected:
-        st.success(f"🎯 **Detected Provider:** `{detected}` — Models for `{detected}` are now loaded!")
+        st.success(f"🎯 **Auto-Detected Provider:** `{detected}` — Models for `{detected}` are now loaded!")
         current_provider = detected
         st.session_state["active_ai_provider"] = detected
     else:
-        # Manual fallback selector if not auto-detected
         provider_names = list(PROVIDERS.keys())
         current_provider = st.selectbox(
             "Select Provider:",
             options=provider_names,
             index=provider_names.index(active_p) if active_p in provider_names else 0,
-            help="Provider was not auto-detected from prefix. Choose manually:",
+            help="Choose your provider manually if prefix is not auto-detected:",
         )
         st.session_state["active_ai_provider"] = current_provider
 
@@ -146,7 +149,7 @@ with col_config:
 
     with btn_c1:
         if st.button(f"💾 Save & Use {current_provider}", use_container_width=True):
-            if raw_input_key.strip():
+            if is_valid_key_string(raw_input_key):
                 st.session_state[f"custom_key_{current_provider}"] = raw_input_key.strip()
                 st.session_state["active_ai_provider"] = current_provider
 
@@ -159,13 +162,12 @@ with col_config:
                     st.warning(f"⚠️ Key saved, but test failed: {msg}")
                 st.rerun()
             else:
-                st.warning("Please paste an API key first.")
+                st.warning("Please paste a fresh, valid API key first.")
 
     with btn_c2:
         if st.button("🧪 Test Connection", use_container_width=True):
-            test_target = raw_input_key.strip() or saved_key
-            if test_target:
-                # Use selected model or default model
+            test_target = raw_input_key.strip() if is_valid_key_string(raw_input_key) else saved_key
+            if is_valid_key_string(test_target):
                 target_model = st.session_state.get(f"active_model_{current_provider}", cfg["default_model"])
                 with st.spinner(f"Testing {current_provider} connection with model {target_model}..."):
                     ok, msg = test_api_key(current_provider, test_target, target_model)
@@ -174,12 +176,13 @@ with col_config:
                 else:
                     st.error(f"❌ {msg}")
             else:
-                st.warning("Please enter or paste an API key to test.")
+                st.warning("Please paste a fresh API key in the field before testing.")
 
     with btn_c3:
-        if st.button("🗑️ Clear Key", use_container_width=True):
+        if st.button("🗑️ Clear Field", use_container_width=True):
+            st.session_state["user_pasted_api_key"] = ""
             st.session_state.pop(f"custom_key_{current_provider}", None)
-            st.info(f"Custom key for {current_provider} cleared.")
+            st.info("Input field cleared.")
             st.rerun()
 
     # Model Selection for detected / active provider
@@ -202,7 +205,7 @@ with col_config:
         st.success(f"Model updated to `{chosen_model}`")
         st.rerun()
 
-    # Helpful guide box with signup links
+    # Direct signup link
     st.markdown(f"""
     <div class="guide-box">
         <strong>Need an API Key for {current_provider}?</strong><br>
@@ -231,7 +234,7 @@ with col_overview:
         st.write(f"• **Key Preview:** `{masked}`")
     else:
         st.error(f"🔴 **Active Provider:** `{active_provider}` (No Valid Key)")
-        st.write(f"Paste your {active_provider} key on the left to activate it.")
+        st.write(f"Paste your fresh {active_provider} key on the left to activate it.")
 
     st.markdown("---")
     st.markdown("#### 🔍 Key Prefix Detection Guide")

@@ -79,14 +79,20 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
 
 
 def is_valid_key_string(val: Optional[str]) -> bool:
-    """Filter out empty strings and placeholder values."""
+    """Filter out empty strings, expired keys, and placeholder values."""
     if not val:
         return False
     v = val.strip()
     if not v:
         return False
     lower = v.lower()
-    if lower.startswith("replace_") or "your_key" in lower or "your-key" in lower:
+    if (
+        lower.startswith("replace_")
+        or "your_key" in lower
+        or "your-key" in lower
+        or "your-groq" in lower
+        or v.endswith("kDo5hi")  # Filter out known expired sample key
+    ):
         return False
     return True
 
@@ -123,7 +129,7 @@ def get_active_provider() -> str:
     except Exception:
         pass
 
-    # Check if a custom key exists that can auto-select provider
+    # Check if a custom key exists in session to auto-select provider
     try:
         import streamlit as st
 
@@ -210,9 +216,10 @@ def get_active_api_key_info() -> Tuple[Optional[str], str, str]:
 def test_api_key(provider: str, api_key: str, model: Optional[str] = None) -> Tuple[bool, str]:
     """
     Test an API key by sending a minimal completion request to the provider.
+    Includes smart fallback (e.g. grok-2-latest -> grok-beta for xAI).
     """
     if not is_valid_key_string(api_key):
-        return False, "API key cannot be empty or a placeholder."
+        return False, "API key cannot be empty, expired, or a placeholder."
 
     cfg = PROVIDERS.get(provider)
     if not cfg:
@@ -236,13 +243,23 @@ def test_api_key(provider: str, api_key: str, model: Optional[str] = None) -> Tu
             resp = client.post(endpoint, headers=headers, json=payload)
             if resp.status_code == 200:
                 return True, f"Successfully authenticated with {provider} using {test_model}!"
-            else:
-                try:
-                    err_json = resp.json()
-                    err_msg = err_json.get("error", {}).get("message", resp.text)
-                except Exception:
-                    err_msg = resp.text
-                return False, f"API Error ({resp.status_code}): {err_msg}"
+
+            # If xAI and grok-2-latest returned 404, retry with grok-beta
+            if provider == "xAI (Grok)" and resp.status_code == 404 and test_model != "grok-beta":
+                payload["model"] = "grok-beta"
+                resp_retry = client.post(endpoint, headers=headers, json=payload)
+                if resp_retry.status_code == 200:
+                    return True, f"Successfully authenticated with {provider} using grok-beta!"
+
+            # Parse error
+            try:
+                err_json = resp.json()
+                err_msg = err_json.get("error", {}).get("message", resp.text)
+            except Exception:
+                err_msg = resp.text
+
+            return False, f"API Error ({resp.status_code}): {err_msg}"
+
     except httpx.ConnectError:
         return False, f"Could not connect to {provider} endpoint. Check internet connection."
     except httpx.TimeoutException:

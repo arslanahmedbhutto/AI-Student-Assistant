@@ -1,0 +1,18 @@
+# Core Application & UI
+streamlit>=1.40
+groq>=0.11
+python-dotenv>=1.0
+
+# RAG & Document Processing
+faiss-cpu>=1.8
+numpy>=1.26
+langchain-text-splitters>=0.3
+pdfplumber>=0.11
+Pillow>=10.0
+ollama>=0.4
+
+# Testing
+pytest>=8.0
+
+# Note: For optional local Image OCR support, install easyocr:
+# pip install easyocr

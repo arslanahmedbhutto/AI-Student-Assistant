@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment variables & secrets (Streamlit Cloud uses App Settings / Secrets)
+.env
+.streamlit/secrets.toml
+
+# OS & temp files
+.DS_Store
+Thumbs.db
+*.tmp

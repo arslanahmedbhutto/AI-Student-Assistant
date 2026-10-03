@@ -113,14 +113,20 @@ with col2:
 with col3:
     st.write("")
     st.write("")
-    if st.button("🗑️ Clear History", use_container_width=True):
-        st.session_state.messages = []
+    if st.button("🗑️ Clear Chat", use_container_width=True):
+        st.session_state.messages = [
+            {
+                "role": "assistant",
+                "content": f"👋 **Hello! I am your AI-Student Assistant (powered by {active_provider}).**\n\nWhat subject or topic are you studying today? You can ask me to explain concepts, solve homework problems, or summarize topics.",
+            }
+        ]
+        st.toast("Chat refreshed & cleared!", icon="🧹")
         st.rerun()
 
 st.divider()
 
-# ── Chat Session State ───────────────────────
-if "messages" not in st.session_state:
+# ── Chat Session State (Persisted across pages) ───────────────
+if "messages" not in st.session_state or not st.session_state.messages:
     st.session_state.messages = [
         {
             "role": "assistant",
@@ -151,3 +157,4 @@ if prompt:
 
     # Save assistant message
     st.session_state.messages.append({"role": "assistant", "content": answer})
+    st.rerun()

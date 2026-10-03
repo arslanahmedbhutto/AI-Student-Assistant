@@ -3,7 +3,7 @@ AI-Student Assistant — Smart Summarizer
 """
 
 import streamlit as st
-from utils.ai_engine import ask_ai
+from utils.ai_engine import ask_ai, get_active_provider
 
 st.set_page_config(
     page_title="Summarizer — AI-Student Assistant",
@@ -52,7 +52,7 @@ html, body, [class*="css"], .stApp {
     color: #FFFFFF !important;
     border: none !important;
     border-radius: 10px !important;
-    padding: 12px 24px !important;
+    padding: 10px 20px !important;
     font-weight: 700 !important;
     box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25) !important;
 }
@@ -66,6 +66,12 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# State initialization
+if "summarizer_notes" not in st.session_state:
+    st.session_state.summarizer_notes = ""
+if "summarizer_output" not in st.session_state:
+    st.session_state.summarizer_output = ""
+
 col_input, col_settings = st.columns([3, 1])
 
 with col_settings:
@@ -74,33 +80,43 @@ with col_settings:
         "📋 Format",
         ["Key Bullet Points", "Executive Overview", "Detailed Breakdown"]
     )
+    st.write("")
+    if st.button("🗑️ Clear / Reset", use_container_width=True):
+        st.session_state.summarizer_notes = ""
+        st.session_state.summarizer_output = ""
+        st.toast("Summarizer cleared!", icon="🧹")
+        st.rerun()
 
 with col_input:
-    notes = st.text_area(
+    notes_val = st.text_area(
         "Paste your study notes or article text here:",
+        value=st.session_state.summarizer_notes,
         height=260,
         placeholder="e.g. Paste lecture notes, textbook passages, or definitions..."
     )
+    st.session_state.summarizer_notes = notes_val
 
 if st.button("✨ Generate AI Summary", use_container_width=True):
-    if notes.strip():
+    if st.session_state.summarizer_notes.strip():
         with st.spinner("Analyzing and condensing your notes..."):
             prompt = (
                 f"You are AI-Student Assistant.\n"
                 f"Summarize the study notes below in {language}.\n"
                 f"Format requested: {summary_format}.\n"
                 f"Provide clear, high-yield takeaways that a student can easily memorize.\n\n"
-                f"Notes:\n{notes}"
+                f"Notes:\n{st.session_state.summarizer_notes}"
             )
-            summary = ask_ai(prompt, language)
-
-        st.markdown(f'<div class="result-card">{summary}</div>', unsafe_allow_html=True)
-
-        st.download_button(
-            "📥 Download Summary (.txt)",
-            data=summary,
-            file_name="notes_summary.txt",
-            mime="text/plain",
-        )
+            st.session_state.summarizer_output = ask_ai(prompt, language)
+        st.rerun()
     else:
         st.warning("Please paste some notes or text to summarize.")
+
+# Persisted result card
+if st.session_state.summarizer_output:
+    st.markdown(f'<div class="result-card">{st.session_state.summarizer_output}</div>', unsafe_allow_html=True)
+    st.download_button(
+        "📥 Download Summary (.txt)",
+        data=st.session_state.summarizer_output,
+        file_name="notes_summary.txt",
+        mime="text/plain",
+    )

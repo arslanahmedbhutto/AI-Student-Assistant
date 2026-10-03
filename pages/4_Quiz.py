@@ -66,22 +66,36 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# State initialization
+if "quiz_topic" not in st.session_state:
+    st.session_state.quiz_topic = ""
+if "quiz_output" not in st.session_state:
+    st.session_state.quiz_output = ""
+
 col_text, col_opts = st.columns([3, 1])
 
 with col_opts:
     difficulty = st.selectbox("🎯 Difficulty", ["Easy", "Medium", "Hard"])
     num_questions = st.slider("Number of Questions", min_value=1, max_value=10, value=5)
     include_exp = st.checkbox("Include Explanations", value=True)
+    st.write("")
+    if st.button("🗑️ Clear / Reset Quiz", use_container_width=True):
+        st.session_state.quiz_topic = ""
+        st.session_state.quiz_output = ""
+        st.toast("Quiz generator cleared!", icon="🧹")
+        st.rerun()
 
 with col_text:
-    topic_content = st.text_area(
+    topic_val = st.text_area(
         "Enter Syllabus Topic or Study Notes:",
+        value=st.session_state.quiz_topic,
         height=260,
         placeholder="e.g. Newton's Laws of Motion, Cellular Respiration, Operating Systems Memory Management...",
     )
+    st.session_state.quiz_topic = topic_val
 
 if st.button("🚀 Generate Practice Quiz", use_container_width=True):
-    if topic_content.strip():
+    if st.session_state.quiz_topic.strip():
         with st.spinner("Generating custom test questions..."):
             prompt = (
                 f"You are an expert academic examiner.\n"
@@ -91,18 +105,21 @@ if st.button("🚀 Generate Practice Quiz", use_container_width=True):
                 f"- Format each question clearly with Options A, B, C, D.\n"
                 f"- Include the Correct Answer clearly identified.\n"
                 f"- {'Provide a brief explanation for the correct answer.' if include_exp else 'Do not include explanation.'}\n\n"
-                f"Material:\n{topic_content}"
+                f"Material:\n{st.session_state.quiz_topic}"
             )
-            quiz_result = ask_ai(prompt)
-
-        st.markdown("### 📋 Generated Quiz")
-        st.markdown(f'<div class="quiz-card">{quiz_result}</div>', unsafe_allow_html=True)
-
-        st.download_button(
-            "📥 Download Quiz (.txt)",
-            data=quiz_result,
-            file_name="practice_quiz.txt",
-            mime="text/plain",
-        )
+            st.session_state.quiz_output = ask_ai(prompt)
+        st.rerun()
     else:
         st.warning("Please enter a topic or study notes first.")
+
+# Persisted quiz card
+if st.session_state.quiz_output:
+    st.markdown("### 📋 Generated Quiz")
+    st.markdown(f'<div class="quiz-card">{st.session_state.quiz_output}</div>', unsafe_allow_html=True)
+
+    st.download_button(
+        "📥 Download Quiz (.txt)",
+        data=st.session_state.quiz_output,
+        file_name="practice_quiz.txt",
+        mime="text/plain",
+    )

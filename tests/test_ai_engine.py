@@ -1,9 +1,10 @@
 """
-Unit tests for AI multi-provider engine and dynamic model loader.
+Unit tests for AI multi-provider engine, dynamic model loader, and OCR.
 """
 
 import pytest
 from utils import ai_engine
+from utils.ocr import is_easyocr_available, extract_text_from_image
 
 
 def test_detect_provider():
@@ -46,3 +47,8 @@ def test_empty_key_test_fails_gracefully():
     ok, msg = ai_engine.test_api_key("Groq", "")
     assert ok is False
     assert "empty" in msg.lower() or "invalid" in msg.lower()
+
+
+def test_easyocr_available():
+    # EasyOCR is installed and recognized
+    assert is_easyocr_available() is True

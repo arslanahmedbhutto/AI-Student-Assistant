@@ -1,10 +1,11 @@
 """
 AI-Student Assistant — PDF Assistant (RAG)
+Supports interactive multi-turn Q&A chat, automatic summarization, and quiz generation.
 """
 
 import streamlit as st
 from utils.pdf_reader import extract_text_from_pdf
-from utils.ai_engine import ask_ai
+from utils.ai_engine import ask_ai, get_active_provider
 from rag.rag_engine import RAGEngine
 
 MAX_CONTEXT_CHARS = 12000
@@ -19,13 +20,15 @@ st.set_page_config(
 # ── CSS (Light, Clean, High Contrast) ────────
 st.markdown("""
 <style>
-.stApp {
-    background-color: #F8FAFC !important;
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+html, body, [class*="css"], .stApp {
+    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif !important;
+    background-color: #FAFAFC !important;
     color: #0F172A !important;
 }
 .page-header {
     background: #FFFFFF;
-    border: 1px solid #E2E8F0;
+    border: 1px solid #EAECEF;
     border-radius: 16px;
     padding: 24px 30px;
     margin-bottom: 20px;
@@ -34,7 +37,7 @@ st.markdown("""
 .page-header h1 {
     color: #0F172A !important;
     font-size: 30px !important;
-    font-weight: 700 !important;
+    font-weight: 800 !important;
     margin: 0 0 6px 0 !important;
 }
 .page-header p {
@@ -50,8 +53,16 @@ st.markdown("""
     padding: 14px 18px;
     margin-bottom: 12px;
     color: #334155;
-    font-size: 14px;
+    font-size: 13.5px;
     line-height: 1.6;
+}
+[data-testid="stChatMessage"] {
+    background-color: #FFFFFF !important;
+    border: 1px solid #EAECEF !important;
+    border-radius: 14px !important;
+    padding: 14px 18px !important;
+    margin-bottom: 10px !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02) !important;
 }
 .stButton button {
     background: linear-gradient(135deg, #4F46E5 0%, #4338CA 100%) !important;
@@ -68,7 +79,7 @@ st.markdown("""
 st.markdown("""
 <div class="page-header">
     <h1>📄 Document Assistant (RAG)</h1>
-    <p>Upload your textbook or study notes. Ask questions to get answers sourced directly from your document.</p>
+    <p>Upload your textbook or study notes. Ask questions grounded in your document, generate summaries, and test yourself.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -86,11 +97,11 @@ if uploaded_file:
         text = extract_text_from_pdf(uploaded_file)
 
         if not text.strip():
-            st.error("❌ No text could be extracted from this PDF. For scanned documents, try the OCR Assistant.")
+            st.error("❌ No text could be extracted from this PDF. For scanned documents or image slides, try the OCR Assistant.")
             st.stop()
 
         rag = RAGEngine()
-        with st.spinner("🔄 Building document index..."):
+        with st.spinner("🔄 Building document vector index..."):
             try:
                 rag.build_database(text)
             except Exception as e:
@@ -100,6 +111,7 @@ if uploaded_file:
         st.session_state.pdf_id = file_id
         st.session_state.pdf_text = text
         st.session_state.rag = rag
+        st.session_state.pdf_chat_history = []
         st.session_state.pop("pdf_summary", None)
         st.session_state.pop("pdf_quiz", None)
 
@@ -119,57 +131,89 @@ if uploaded_file:
     if len(text) > MAX_CONTEXT_CHARS:
         st.caption(
             f"ℹ️ Summary & Quiz use the first {MAX_CONTEXT_CHARS:,} characters. "
-            "RAG Search indexes the complete document."
+            "RAG Search indexes the entire document."
         )
 
     st.write("")
 
     # ── Tabs ─────────────────────────────────
     tab_chat, tab_summary, tab_quiz, tab_doc = st.tabs(
-        ["💬 Ask Questions (RAG)", "📝 Generate Summary", "❓ Create Quiz", "📖 View Text"]
+        ["💬 Ask Questions (RAG Chat)", "📝 Generate Summary", "❓ Create Quiz", "📖 View Text"]
     )
 
-    # ── TAB 1 — RAG Chat ─────────────────────
+    # ── TAB 1 — Multi-Turn RAG Chat ──────────
     with tab_chat:
-        st.markdown("### 💬 Ask Questions From This PDF")
-        st.caption("Answers are derived exclusively from your uploaded text chunks.")
+        st.markdown("### 💬 Interactive Q&A (Grounded in PDF)")
+        st.caption("Answers are derived exclusively from your document chunks. Previous questions are kept in session.")
 
-        question = st.text_input(
-            "Enter your question:",
-            placeholder="e.g., What are the key findings mentioned in Section 2?",
-        )
+        if "pdf_chat_history" not in st.session_state:
+            st.session_state.pdf_chat_history = []
 
-        if st.button("🔍 Search & Answer", use_container_width=True):
-            if question.strip():
-                with st.spinner("Retrieving relevant passages and formulating answer..."):
-                    chunks = rag.search(question, k=3)
-                    context = "\n\n".join(chunks)
+        q_ctrl1, q_ctrl2 = st.columns([4, 1])
+        with q_ctrl2:
+            if st.button("🗑️ Clear Q&A", use_container_width=True):
+                st.session_state.pdf_chat_history = []
+                st.toast("PDF Q&A thread cleared!", icon="🧹")
+                st.rerun()
 
-                    prompt = (
-                        "You are AI-Student Assistant.\n\n"
-                        "Answer the student's question ONLY using the context provided below.\n"
-                        "If the answer is not contained in the context, explicitly say:\n"
-                        '"I could not find this information in the uploaded PDF."\n\n'
-                        f"Context:\n{context}\n\n"
-                        f"Question:\n{question}"
-                    )
-                    answer = ask_ai(prompt)
+        # Render Q&A Chat Thread
+        if st.session_state.pdf_chat_history:
+            for item in st.session_state.pdf_chat_history:
+                with st.chat_message("user", avatar="🧑‍🎓"):
+                    st.markdown(item["question"])
+                with st.chat_message("assistant", avatar="🤖"):
+                    st.markdown(item["answer"])
+                    if item.get("chunks"):
+                        with st.expander("🔍 View Retrieved Sources"):
+                            for i, chk in enumerate(item["chunks"], 1):
+                                st.markdown(f"**Source Passage #{i}:**")
+                                st.markdown(f'<div class="chunk-box">{chk}</div>', unsafe_allow_html=True)
+            st.divider()
 
-                st.markdown("#### 💡 Answer")
-                st.markdown(answer)
+        # Question input form
+        with st.form("pdf_qa_form", clear_on_submit=True):
+            user_q = st.text_input(
+                "Ask a question from this document:",
+                placeholder="e.g., What are the key formulas or findings in this chapter?",
+            )
+            submit_q = st.form_submit_button("🔍 Search & Answer", use_container_width=True)
 
-                st.write("")
-                with st.expander("🔍 View Retrieved Document Chunks"):
-                    for i, chunk in enumerate(chunks, start=1):
-                        st.markdown(f"**Chunk #{i}**")
-                        st.markdown(f'<div class="chunk-box">{chunk}</div>', unsafe_allow_html=True)
-            else:
-                st.warning("Please type a question first.")
+        if submit_q and user_q.strip():
+            with st.spinner("Retrieving relevant passages and formulating answer..."):
+                chunks = rag.search(user_q, k=3)
+                context = "\n\n".join(chunks)
+
+                prompt = (
+                    "You are AI-Student Assistant.\n\n"
+                    "Answer the student's question ONLY using the context provided below.\n"
+                    "If the answer is not contained in the context, explicitly say:\n"
+                    '"I could not find this information in the uploaded PDF."\n\n'
+                    f"Context:\n{context}\n\n"
+                    f"Question:\n{user_q}"
+                )
+                answer = ask_ai(prompt)
+
+            st.session_state.pdf_chat_history.append({
+                "question": user_q,
+                "answer": answer,
+                "chunks": chunks,
+            })
+            st.rerun()
 
     # ── TAB 2 — Summary ──────────────────────
     with tab_summary:
         st.markdown("### 📝 AI Document Summary")
-        if st.button("Generate Summary Now"):
+        col_s1, col_s2 = st.columns([3, 1])
+        with col_s1:
+            gen_sum = st.button("Generate Summary Now")
+        with col_s2:
+            if "pdf_summary" in st.session_state:
+                if st.button("🗑️ Clear Summary", use_container_width=True):
+                    st.session_state.pop("pdf_summary", None)
+                    st.toast("Summary cleared!", icon="🧹")
+                    st.rerun()
+
+        if gen_sum:
             prompt = (
                 "Summarize the following document for a student. Include key topics, "
                 "important definitions, and main conclusions in clear bullet points:\n\n"
@@ -177,8 +221,9 @@ if uploaded_file:
             )
             with st.spinner("Writing summary..."):
                 st.session_state.pdf_summary = ask_ai(prompt)
+            st.rerun()
 
-        if "pdf_summary" in st.session_state:
+        if "pdf_summary" in st.session_state and st.session_state.pdf_summary:
             st.markdown(st.session_state.pdf_summary)
             st.download_button(
                 "📥 Download Summary (.txt)",
@@ -190,7 +235,17 @@ if uploaded_file:
     # ── TAB 3 — Quiz ─────────────────────────
     with tab_quiz:
         st.markdown("### ❓ Practice Quiz Generator")
-        if st.button("Generate 10 Practice Questions"):
+        col_q1, col_q2 = st.columns([3, 1])
+        with col_q1:
+            gen_qz = st.button("Generate 10 Practice Questions")
+        with col_q2:
+            if "pdf_quiz" in st.session_state:
+                if st.button("🗑️ Clear Quiz", use_container_width=True):
+                    st.session_state.pop("pdf_quiz", None)
+                    st.toast("Quiz cleared!", icon="🧹")
+                    st.rerun()
+
+        if gen_qz:
             prompt = (
                 "Create exactly 10 Multiple Choice Questions from the text below.\n"
                 "Format each question cleanly with Options A, B, C, D, followed by Correct Answer and Explanation:\n\n"
@@ -198,8 +253,9 @@ if uploaded_file:
             )
             with st.spinner("Generating quiz questions..."):
                 st.session_state.pdf_quiz = ask_ai(prompt)
+            st.rerun()
 
-        if "pdf_quiz" in st.session_state:
+        if "pdf_quiz" in st.session_state and st.session_state.pdf_quiz:
             st.markdown(st.session_state.pdf_quiz)
             st.download_button(
                 "📥 Download Quiz (.txt)",

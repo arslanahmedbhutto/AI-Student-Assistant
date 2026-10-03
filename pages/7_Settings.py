@@ -1,18 +1,20 @@
 """
-AI-Student Assistant — Settings & API Key Manager
-Allows each student to securely input, verify, and use their own Groq API key.
+AI-Student Assistant — Multi-Provider API & Model Settings
+Supports Groq, Google Gemini, OpenAI, and xAI (Grok).
 """
 
 import os
 import streamlit as st
 from utils.ai_engine import (
-    get_active_api_key_info,
+    PROVIDERS,
+    get_active_provider,
     get_active_model,
+    get_api_key_for_provider,
     test_api_key,
 )
 
 st.set_page_config(
-    page_title="Settings — AI-Student Assistant",
+    page_title="API Settings — AI-Student Assistant",
     page_icon="⚙️",
     layout="wide",
 )
@@ -61,14 +63,24 @@ html, body, [class*="css"], .stApp {
 .settings-card p.subtitle {
     color: #64748B !important;
     font-size: 14px !important;
-    margin: 0 0 20px 0 !important;
+    margin: 0 0 18px 0 !important;
+}
+.badge-active {
+    display: inline-block;
+    background: #ECFDF5;
+    color: #059669;
+    border: 1px solid #A7F3D0;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 20px;
 }
 .guide-box {
     background: #F8FAFC;
     border: 1px dashed #CBD5E1;
     border-radius: 12px;
-    padding: 16px 20px;
-    margin-top: 16px;
+    padding: 14px 18px;
+    margin: 14px 0;
     font-size: 13.5px;
     color: #334155;
     line-height: 1.6;
@@ -88,135 +100,155 @@ html, body, [class*="css"], .stApp {
 
 st.markdown("""
 <div class="page-hero">
-    <h1>⚙️ Student Settings & API Key Setup</h1>
-    <p>Configure your personal Groq API key and select preferred AI model settings for your study session.</p>
+    <h1>⚙️ Multi-Provider AI Settings</h1>
+    <p>Choose your AI engine and configure API keys for Groq, Google Gemini, OpenAI, or xAI (Grok).</p>
 </div>
 """, unsafe_allow_html=True)
 
-# Retrieve current key info
-active_key, active_source = get_active_api_key_info()
-masked_key = f"gsk_...{active_key[-6:]}" if active_key else "None"
+active_provider = get_active_provider()
+active_model = get_active_model()
+active_key, active_source = get_api_key_for_provider(active_provider)
 
-col_main, col_info = st.columns([3, 2])
+col_config, col_overview = st.columns([3, 2])
 
-with col_main:
-    # ── 1. Student API Key Configuration ──────────────────────────
+with col_config:
     st.markdown('<div class="settings-card">', unsafe_allow_html=True)
-    st.markdown("### 🔑 Personal Groq API Key")
+    st.markdown("### 🔌 Select Active AI Provider")
     st.markdown(
-        '<p class="subtitle">Each student can add their own free Groq API key here. '
-        'Your key is stored securely in your private session and is never shared.</p>',
+        '<p class="subtitle">Select which provider you want the assistant to use across all tools.</p>',
         unsafe_allow_html=True,
     )
 
-    current_custom_key = st.session_state.get("custom_groq_api_key", "")
-    new_key_input = st.text_input(
-        "Paste your Groq API Key:",
-        value=current_custom_key,
-        type="password",
-        placeholder="gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-        help="Paste your personal Groq key here. It will activate immediately.",
+    provider_names = list(PROVIDERS.keys())
+    selected_p = st.radio(
+        "Choose Provider:",
+        options=provider_names,
+        index=provider_names.index(active_provider) if active_provider in provider_names else 0,
+        horizontal=True,
+        help="Select your preferred AI engine.",
     )
 
-    btn_col1, btn_col2, btn_col3 = st.columns([1.2, 1.2, 1])
+    if selected_p != active_provider:
+        st.session_state["active_ai_provider"] = selected_p
+        st.rerun()
 
-    with btn_col1:
-        if st.button("💾 Save & Use Key", use_container_width=True):
-            if new_key_input.strip():
-                st.session_state["custom_groq_api_key"] = new_key_input.strip()
-                with st.spinner("Verifying key with Groq..."):
-                    success, msg = test_api_key(new_key_input.strip())
-                if success:
+    cfg = PROVIDERS[selected_p]
+    p_key, p_source = get_api_key_for_provider(selected_p)
+
+    st.markdown("---")
+    st.markdown(f"#### 🔑 {cfg['display_name']} Configuration")
+
+    st.markdown(f"""
+    <div class="guide-box">
+        <strong>Need an API Key for {selected_p}?</strong><br>
+        👉 Get your key here: <a href="{cfg['signup_url']}" target="_blank">{cfg['signup_url']}</a>
+    </div>
+    """, unsafe_allow_html=True)
+
+    session_key_name = f"custom_key_{selected_p}"
+    current_val = st.session_state.get(session_key_name, "")
+
+    key_input = st.text_input(
+        f"Enter your {selected_p} API Key:",
+        value=current_val,
+        type="password",
+        placeholder=cfg["placeholder"],
+        help=f"Your {selected_p} key is stored securely in your private browser session.",
+    )
+
+    btn_c1, btn_c2, btn_c3 = st.columns([1.3, 1.2, 1])
+
+    with btn_c1:
+        if st.button(f"💾 Save & Use {selected_p}", use_container_width=True):
+            if key_input.strip():
+                st.session_state[session_key_name] = key_input.strip()
+                st.session_state["active_ai_provider"] = selected_p
+                with st.spinner(f"Verifying {selected_p} key..."):
+                    ok, msg = test_api_key(selected_p, key_input.strip(), cfg["default_model"])
+                if ok:
                     st.success(f"✅ {msg}")
                 else:
                     st.warning(f"⚠️ Key saved, but test failed: {msg}")
                 st.rerun()
             else:
-                st.warning("Please enter a valid API key string.")
+                st.warning("Please enter an API key.")
 
-    with btn_col2:
+    with btn_c2:
         if st.button("🧪 Test Connection", use_container_width=True):
-            with st.spinner("Testing Groq connection..."):
-                test_target = new_key_input.strip() or active_key
-                success, msg = test_api_key(test_target)
-            if success:
-                st.success(f"✅ Connection Successful: {msg}")
+            test_target = key_input.strip() or p_key
+            if test_target:
+                with st.spinner(f"Testing {selected_p} connection..."):
+                    ok, msg = test_api_key(selected_p, test_target)
+                if ok:
+                    st.success(f"✅ Connection OK: {msg}")
+                else:
+                    st.error(f"❌ Test Failed: {msg}")
             else:
-                st.error(f"❌ Connection Failed: {msg}")
+                st.warning("No API key available to test.")
 
-    with btn_col3:
-        if st.button("🗑️ Reset Key", use_container_width=True):
-            st.session_state.pop("custom_groq_api_key", None)
-            st.info("Custom session key removed.")
+    with btn_c3:
+        if st.button("🗑️ Clear Key", use_container_width=True):
+            st.session_state.pop(session_key_name, None)
+            st.info(f"Custom {selected_p} key cleared.")
             st.rerun()
 
-    st.markdown("""
-    <div class="guide-box">
-        <strong>💡 Need a free Groq API key?</strong><br>
-        1. Open <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a>.<br>
-        2. Sign up or log in (free, no credit card required).<br>
-        3. Click <strong>Create API Key</strong>, copy it, and paste it above!
-    </div>
-    </div>
-    """, unsafe_allow_html=True)
+    # Model Selection for this provider
+    st.markdown("---")
+    st.markdown("#### 🤖 Model Selection")
+    provider_models = cfg["models"]
+    model_session_key = f"active_model_{selected_p}"
+    cur_p_model = st.session_state.get(model_session_key, cfg["default_model"])
+    model_idx = provider_models.index(cur_p_model) if cur_p_model in provider_models else 0
 
-    # ── 2. Model Selection ─────────────────────────────────────────
-    st.markdown('<div class="settings-card">', unsafe_allow_html=True)
-    st.markdown("### 🤖 Preferred AI Model")
-    st.markdown(
-        '<p class="subtitle">Choose which high-speed Groq model powers your explanations and quizzes.</p>',
-        unsafe_allow_html=True,
+    chosen_model = st.selectbox(
+        f"Select {selected_p} Model:",
+        options=provider_models,
+        index=model_idx,
     )
 
-    model_options = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
-        "mixtral-8x7b-32768",
-        "gemma2-9b-it",
-    ]
-
-    current_model = get_active_model()
-    default_idx = model_options.index(current_model) if current_model in model_options else 0
-
-    selected_model = st.selectbox(
-        "Active Model:",
-        options=model_options,
-        index=default_idx,
-        help="llama-3.3-70b is recommended for best comprehension and accuracy.",
-    )
-
-    if selected_model != current_model:
-        st.session_state["selected_groq_model"] = selected_model
-        st.success(f"✅ Model changed to `{selected_model}`")
+    if chosen_model != cur_p_model:
+        st.session_state[model_session_key] = chosen_model
+        st.success(f"Model updated to `{chosen_model}`")
         st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-with col_info:
-    # ── Live Status Card ──────────────────────────────────────────
+with col_overview:
+    # ── Live Status Overview ──────────────────────────────────────────
     st.markdown('<div class="settings-card">', unsafe_allow_html=True)
-    st.markdown("### 📡 Connection Status")
+    st.markdown("### 📡 Active Engine Status")
 
     if active_key:
-        st.success(f"🟢 **API Status:** Active & Configured")
-        st.write(f"• **Key:** `{masked_key}`")
-        st.write(f"• **Active Source:** `{active_source}`")
-        st.write(f"• **Selected Model:** `{get_active_model()}`")
+        masked = f"...{active_key[-6:]}"
+        st.success(f"🟢 **Active Provider:** `{active_provider}`")
+        st.write(f"• **Model:** `{active_model}`")
+        st.write(f"• **Key Source:** `{active_source}`")
+        st.write(f"• **Key Preview:** `{masked}`")
     else:
-        st.error("🔴 **API Status:** Not Configured")
-        st.write("No active API key found. Enter your key on the left to start using AI features.")
+        st.error(f"🔴 **Active Provider:** `{active_provider}` (No Key Configured)")
+        st.write(f"Enter your {active_provider} API key on the left to activate it.")
 
     st.markdown("---")
-    st.markdown("#### ☁️ Streamlit Cloud Hosting")
+    st.markdown("#### 📋 Provider Availability")
+
+    for p_name, p_cfg in PROVIDERS.items():
+        k, src = get_api_key_for_provider(p_name)
+        status_icon = "🟢" if k else "⚪"
+        status_text = f"Ready ({src})" if k else "Not set"
+        st.markdown(f"**{status_icon} {p_name}:** {status_text}")
+
+    st.markdown("---")
+    st.markdown("#### ☁️ Streamlit Cloud Secrets (Repo Owner)")
     st.markdown("""
-    If you are the repository owner hosting this on **Streamlit Cloud**:
-    - You can provide a shared default key via **App Settings → Secrets**:
+    To supply default keys on **Streamlit Cloud**, add any of these to your app secrets:
     ```toml
-    GROQ_API_KEY = "gsk_your_key_here"
+    GROQ_API_KEY = "gsk_..."
+    GEMINI_API_KEY = "AIzaSy..."
+    OPENAI_API_KEY = "sk-..."
+    XAI_API_KEY = "xai-..."
     ```
-    - Individual students can still override it anytime with their own key in this Settings page!
     """)
     st.markdown("</div>", unsafe_allow_html=True)
 
-st.caption("AI-Student Assistant v2.0 · Session-based Multi-user Support")
+st.caption("AI-Student Assistant v2.0 · Multi-Provider Support")

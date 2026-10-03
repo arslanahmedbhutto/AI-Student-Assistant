@@ -1,4 +1,5 @@
 import streamlit as st
+from utils.ai_engine import get_active_provider, get_active_model
 
 # ==========================================
 # PAGE CONFIGURATION
@@ -17,14 +18,12 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
-/* ---------- Global Reset & Typography ---------- */
 html, body, [class*="css"], .stApp {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
     background-color: #FAFAFC !important;
     color: #0F172A !important;
 }
 
-/* Hide Default Streamlit Menu & Footer for Clean Website Look */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header[data-testid="stHeader"] {
@@ -33,7 +32,6 @@ header[data-testid="stHeader"] {
     border-bottom: 1px solid #EAECEF !important;
 }
 
-/* ---------- Sidebar (Modern Clean White) ---------- */
 [data-testid="stSidebar"] {
     background-color: #FFFFFF !important;
     border-right: 1px solid #EAECEF !important;
@@ -65,7 +63,6 @@ header[data-testid="stHeader"] {
     font-weight: 700 !important;
 }
 
-/* Sidebar Custom Elements */
 .sidebar-logo {
     display: flex;
     align-items: center;
@@ -124,7 +121,6 @@ header[data-testid="stHeader"] {
     background-color: #10B981;
 }
 
-/* ---------- Website Hero Section ---------- */
 .hero-wrapper {
     background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
     border: 1px solid #EAECEF;
@@ -198,7 +194,6 @@ header[data-testid="stHeader"] {
     color: #334155 !important;
 }
 
-/* ---------- Stat Row (Clean Metrics) ---------- */
 .stat-card {
     background: #FFFFFF;
     border: 1px solid #EAECEF;
@@ -237,7 +232,6 @@ header[data-testid="stHeader"] {
     color: #64748B !important;
 }
 
-/* ---------- Bento-Style Feature Cards ---------- */
 .section-heading {
     text-align: center;
     margin: 40px 0 28px 0;
@@ -317,7 +311,6 @@ header[data-testid="stHeader"] {
     gap: 4px;
 }
 
-/* ---------- Workflow Steps Section ---------- */
 .workflow-card {
     background: #FFFFFF;
     border: 1px solid #EAECEF;
@@ -371,7 +364,6 @@ header[data-testid="stHeader"] {
     margin: 0 !important;
 }
 
-/* ---------- CTA Banner ---------- */
 .cta-box {
     background: linear-gradient(135deg, #1E1B4B 0%, #312E81 50%, #4338CA 100%);
     border-radius: 20px;
@@ -412,6 +404,9 @@ header[data-testid="stHeader"] {
 </style>
 """, unsafe_allow_html=True)
 
+# Dynamic Provider & Model info
+cur_provider = get_active_provider()
+cur_model = get_active_model()
 
 # ==========================================
 # SIDEBAR NAVIGATION & SYSTEM STATUS
@@ -426,13 +421,14 @@ st.sidebar.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-st.sidebar.markdown("""
+st.sidebar.markdown(f"""
 <div class="sidebar-status-box">
     <div class="status-indicator">
         <span class="status-dot"></span> System Operational
     </div>
     <div style="font-size: 12px; color: #475569; line-height: 1.6;">
-        • <strong>LLM:</strong> Groq Llama 3.3 70B<br>
+        • <strong>Provider:</strong> {cur_provider}<br>
+        • <strong>Model:</strong> {cur_model}<br>
         • <strong>Vector DB:</strong> FAISS Index<br>
         • <strong>Deployment:</strong> Streamlit Cloud Ready
     </div>
@@ -456,10 +452,10 @@ st.markdown("""
     </h1>
     <p class="hero-subtitle">
         Upload course textbooks, chat with grounded PDF documents, generate exam-ready 
-        MCQs, and extract handwritten notes — all powered by ultra-fast Groq AI.
+        MCQs, and extract handwritten notes — supporting Groq, Google Gemini, OpenAI, and xAI Grok.
     </p>
     <div class="hero-tags">
-        <span class="hero-tag">⚡ Groq Llama 3.3 Powered</span>
+        <span class="hero-tag">⚡ Multi-LLM Engine</span>
         <span class="hero-tag">📄 Zero-Hallucination RAG</span>
         <span class="hero-tag">🌍 English · Urdu · Sindhi</span>
         <span class="hero-tag">🔒 100% Private Processing</span>
@@ -485,12 +481,12 @@ with stat1:
     """, unsafe_allow_html=True)
 
 with stat2:
-    st.markdown("""
+    st.markdown(f"""
     <div class="stat-card">
-        <div class="stat-icon" style="background: #ECFDF5; color: #059669;">⚡</div>
+        <div class="stat-icon" style="background: #ECFDF5; color: #059669;">🤖</div>
         <div class="stat-content">
-            <h4>< 1s Latency</h4>
-            <p>Groq Inference</p>
+            <h4>{cur_provider}</h4>
+            <p>Active Engine</p>
         </div>
     </div>
     """, unsafe_allow_html=True)

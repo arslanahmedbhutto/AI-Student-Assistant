@@ -3,7 +3,12 @@ AI-Student Assistant — AI Chat Page
 """
 
 import streamlit as st
-from utils.ai_engine import ask_ai, get_active_api_key_info
+from utils.ai_engine import (
+    ask_ai,
+    get_active_api_key_info,
+    get_active_provider,
+    get_active_model,
+)
 
 # ── Page Config ──────────────────────────────
 st.set_page_config(
@@ -22,7 +27,6 @@ html, body, [class*="css"], .stApp {
     color: #0F172A !important;
 }
 
-/* Page Header */
 .page-header {
     background: #FFFFFF;
     border: 1px solid #EAECEF;
@@ -43,7 +47,6 @@ html, body, [class*="css"], .stApp {
     margin: 0 !important;
 }
 
-/* Chat Messages */
 [data-testid="stChatMessage"] {
     background-color: #FFFFFF !important;
     border: 1px solid #EAECEF !important;
@@ -54,7 +57,6 @@ html, body, [class*="css"], .stApp {
     color: #0F172A !important;
 }
 
-/* Chat Input */
 [data-testid="stChatInput"] {
     background-color: #FFFFFF !important;
     border: 1px solid #CBD5E1 !important;
@@ -65,7 +67,6 @@ html, body, [class*="css"], .stApp {
     color: #0F172A !important;
 }
 
-/* Action Button */
 .stButton button {
     background: linear-gradient(135deg, #4F46E5 0%, #4338CA 100%) !important;
     color: #FFFFFF !important;
@@ -86,23 +87,30 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Check active API key
-active_key, _ = get_active_api_key_info()
+# Active engine info
+active_key, active_source, active_provider = get_active_api_key_info()
+active_model = get_active_model()
+
 if not active_key:
-    st.info(
-        "💡 **Student Tip:** To enable AI answers, go to the **7_Settings** page in the left sidebar "
-        "and paste your free Groq API key (free at [console.groq.com/keys](https://console.groq.com/keys))."
+    st.warning(
+        f"🔑 **API Key Needed for {active_provider}:** Go to **7_Settings** in the left sidebar "
+        f"to paste your API key or switch provider (Groq, Gemini, OpenAI, xAI Grok)."
     )
 
 # ── Controls Bar ─────────────────────────────
-col1, col2 = st.columns([3, 1])
+col1, col2, col3 = st.columns([2, 1.5, 1])
+
 with col1:
     language = st.selectbox(
         "🌍 Response Language",
         ["English", "Urdu", "Sindhi"],
         help="Select the language for the AI tutor's answers.",
     )
+
 with col2:
+    st.info(f"🤖 **Engine:** {active_provider} (`{active_model}`)")
+
+with col3:
     st.write("")
     st.write("")
     if st.button("🗑️ Clear History", use_container_width=True):
@@ -116,7 +124,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "assistant",
-            "content": "👋 **Hello! I am your AI-Student Assistant.**\n\nWhat subject or topic are you studying today? You can ask me to explain concepts, solve homework problems, or summarize topics.",
+            "content": f"👋 **Hello! I am your AI-Student Assistant (powered by {active_provider}).**\n\nWhat subject or topic are you studying today? You can ask me to explain concepts, solve homework problems, or summarize topics.",
         }
     ]
 
@@ -137,7 +145,7 @@ if prompt:
 
     # Generate response
     with st.chat_message("assistant", avatar="🤖"):
-        with st.spinner("Thinking..."):
+        with st.spinner(f"{active_provider} is thinking..."):
             answer = ask_ai(prompt, language)
         st.markdown(answer)
 

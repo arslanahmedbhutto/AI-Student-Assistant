@@ -1,10 +1,5 @@
 """
-AI-Student Assistant — PDF Assistant Page
-
-Features:
-  - Upload PDF and extract text
-  - AI Summary & Quiz generation
-  - RAG-powered PDF Chat (answers from document only)
+AI-Student Assistant — PDF Assistant (RAG)
 """
 
 import streamlit as st
@@ -12,44 +7,78 @@ from utils.pdf_reader import extract_text_from_pdf
 from utils.ai_engine import ask_ai
 from rag.rag_engine import RAGEngine
 
-# Max characters of PDF text sent to the LLM for summary / quiz
 MAX_CONTEXT_CHARS = 12000
 
 # ── Page Config ──────────────────────────────
-st.set_page_config(page_title="PDF Assistant", page_icon="📄", layout="wide")
+st.set_page_config(
+    page_title="PDF Assistant — AI-Student Assistant",
+    page_icon="📄",
+    layout="wide",
+)
 
-# ── CSS ──────────────────────────────────────
+# ── CSS (Light, Clean, High Contrast) ────────
 st.markdown("""
 <style>
 .stApp {
-    background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 50%, #f0f4ff 100%);
+    background-color: #F8FAFC !important;
+    color: #0F172A !important;
 }
-.stButton > button {
-    width: 100%;
-    border-radius: 12px;
-    height: 45px;
-    font-size: 15px;
-    font-weight: 600;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: white;
-    border: none;
+.page-header {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 16px;
+    padding: 24px 30px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
 }
-.stButton > button:hover {
-    transform: scale(1.02);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+.page-header h1 {
+    color: #0F172A !important;
+    font-size: 30px !important;
+    font-weight: 700 !important;
+    margin: 0 0 6px 0 !important;
+}
+.page-header p {
+    color: #64748B !important;
+    font-size: 15px !important;
+    margin: 0 !important;
+}
+.chunk-box {
+    background-color: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-left: 4px solid #4F46E5;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 12px;
+    color: #334155;
+    font-size: 14px;
+    line-height: 1.6;
+}
+.stButton button {
+    background: linear-gradient(135deg, #4F46E5 0%, #4338CA 100%) !important;
+    color: #FFFFFF !important;
+    border: none !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    box-shadow: 0 2px 6px rgba(79, 70, 229, 0.25) !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Title ────────────────────────────────────
-st.title("📄 AI PDF Assistant")
-st.markdown("Upload your study material and chat with your PDF using AI.")
-st.divider()
+# ── Header ───────────────────────────────────
+st.markdown("""
+<div class="page-header">
+    <h1>📄 Document Assistant (RAG)</h1>
+    <p>Upload your textbook or study notes. Ask questions to get answers sourced directly from your document.</p>
+</div>
+""", unsafe_allow_html=True)
 
-# ── Upload PDF ───────────────────────────────
-uploaded_file = st.file_uploader("📂 Upload PDF", type=["pdf"])
+# ── Upload Box ───────────────────────────────
+uploaded_file = st.file_uploader(
+    "Choose a PDF file to analyze",
+    type=["pdf"],
+    help="Upload PDF course materials, slides, or chapters.",
+)
 
-# ── Process PDF ──────────────────────────────
 if uploaded_file:
     file_id = f"{uploaded_file.name}-{uploaded_file.size}"
 
@@ -57,11 +86,11 @@ if uploaded_file:
         text = extract_text_from_pdf(uploaded_file)
 
         if not text.strip():
-            st.error("❌ No text found in PDF. If this is a scanned document, try the OCR page.")
+            st.error("❌ No text could be extracted from this PDF. For scanned documents, try the OCR Assistant.")
             st.stop()
 
         rag = RAGEngine()
-        with st.spinner("🔄 Preparing AI Knowledge Base..."):
+        with st.spinner("🔄 Building document index..."):
             try:
                 rag.build_database(text)
             except Exception as e:
@@ -77,97 +106,111 @@ if uploaded_file:
     text = st.session_state.pdf_text
     rag = st.session_state.rag
 
-    st.success(f"✅ Knowledge Base Ready — {rag.get_total_chunks()} chunks indexed ({rag.get_backend()})")
-    st.write("📄 **File:**", uploaded_file.name)
-    st.write("📦 **Size:**", round(uploaded_file.size / 1024, 2), "KB")
+    # Info summary bar
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.info(f"📄 **File:** `{uploaded_file.name}`")
+    with col_b:
+        st.info(f"📦 **Size:** `{round(uploaded_file.size / 1024, 1)} KB`")
+    with col_c:
+        st.success(f"⚡ **Indexed:** `{rag.get_total_chunks()} chunks` ({rag.get_backend()})")
 
     llm_text = text[:MAX_CONTEXT_CHARS]
     if len(text) > MAX_CONTEXT_CHARS:
         st.caption(
-            f"ℹ️ Summary and quiz use the first {MAX_CONTEXT_CHARS:,} characters. "
-            "PDF Chat searches the entire document."
+            f"ℹ️ Summary & Quiz use the first {MAX_CONTEXT_CHARS:,} characters. "
+            "RAG Search indexes the complete document."
         )
+
+    st.write("")
 
     # ── Tabs ─────────────────────────────────
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["📖 Document", "📝 Summary", "❓ Quiz", "💬 PDF Chat"]
+    tab_chat, tab_summary, tab_quiz, tab_doc = st.tabs(
+        ["💬 Ask Questions (RAG)", "📝 Generate Summary", "❓ Create Quiz", "📖 View Text"]
     )
 
-    # ── TAB 1 — Document ─────────────────────
-    with tab1:
-        st.subheader("📄 PDF Content")
-        st.text_area("Extracted Text", text, height=450)
+    # ── TAB 1 — RAG Chat ─────────────────────
+    with tab_chat:
+        st.markdown("### 💬 Ask Questions From This PDF")
+        st.caption("Answers are derived exclusively from your uploaded text chunks.")
 
-    # ── TAB 2 — AI Summary ───────────────────
-    with tab2:
-        st.subheader("📝 AI Summary")
-        if st.button("Generate Summary"):
-            prompt = f"Summarize the following PDF in simple student-friendly language.\n\n{llm_text}"
-            with st.spinner("📝 Generating Summary..."):
-                st.session_state.pdf_summary = ask_ai(prompt)
-
-        if "pdf_summary" in st.session_state:
-            st.write(st.session_state.pdf_summary)
-            st.download_button(
-                "📥 Download Summary",
-                data=st.session_state.pdf_summary,
-                file_name="summary.txt",
-                mime="text/plain",
-            )
-
-    # ── TAB 3 — AI Quiz ──────────────────────
-    with tab3:
-        st.subheader("❓ AI Quiz Generator")
-        if st.button("Generate Quiz"):
-            prompt = (
-                "Generate 10 Multiple Choice Questions from the given context.\n\n"
-                "Each question must include:\n"
-                "Question:\nA.\nB.\nC.\nD.\n\n"
-                "Correct Answer:\nExplanation:\n\n"
-                f"Context:\n{llm_text}"
-            )
-            with st.spinner("❓ Generating Quiz..."):
-                st.session_state.pdf_quiz = ask_ai(prompt)
-
-        if "pdf_quiz" in st.session_state:
-            st.write(st.session_state.pdf_quiz)
-            st.download_button(
-                "📥 Download Quiz",
-                data=st.session_state.pdf_quiz,
-                file_name="quiz.txt",
-                mime="text/plain",
-            )
-
-    # ── TAB 4 — RAG PDF Chat ─────────────────
-    with tab4:
-        st.subheader("💬 Chat with your PDF (RAG)")
         question = st.text_input(
-            "Ask anything from this PDF",
-            placeholder="Example: What is Machine Learning?",
+            "Enter your question:",
+            placeholder="e.g., What are the key findings mentioned in Section 2?",
         )
 
-        if st.button("🚀 Ask AI"):
+        if st.button("🔍 Search & Answer", use_container_width=True):
             if question.strip():
-                with st.spinner("Searching relevant information..."):
-                    chunks = rag.search(question)
+                with st.spinner("Retrieving relevant passages and formulating answer..."):
+                    chunks = rag.search(question, k=3)
                     context = "\n\n".join(chunks)
 
                     prompt = (
                         "You are AI-Student Assistant.\n\n"
-                        "Answer ONLY from the context below.\n"
-                        "If the answer is not available in the context, say:\n"
+                        "Answer the student's question ONLY using the context provided below.\n"
+                        "If the answer is not contained in the context, explicitly say:\n"
                         '"I could not find this information in the uploaded PDF."\n\n'
-                        f"Context:\n{context}\n\nQuestion:\n{question}"
+                        f"Context:\n{context}\n\n"
+                        f"Question:\n{question}"
                     )
-
-                with st.spinner("🤖 Finding Answer..."):
                     answer = ask_ai(prompt)
 
-                st.write(answer)
+                st.markdown("#### 💡 Answer")
+                st.markdown(answer)
 
-                with st.expander("📚 View Retrieved PDF Chunks"):
+                st.write("")
+                with st.expander("🔍 View Retrieved Document Chunks"):
                     for i, chunk in enumerate(chunks, start=1):
-                        st.markdown(f"**Chunk {i}**")
-                        st.write(chunk)
+                        st.markdown(f"**Chunk #{i}**")
+                        st.markdown(f'<div class="chunk-box">{chunk}</div>', unsafe_allow_html=True)
             else:
-                st.warning("Please enter a question.")
+                st.warning("Please type a question first.")
+
+    # ── TAB 2 — Summary ──────────────────────
+    with tab_summary:
+        st.markdown("### 📝 AI Document Summary")
+        if st.button("Generate Summary Now"):
+            prompt = (
+                "Summarize the following document for a student. Include key topics, "
+                "important definitions, and main conclusions in clear bullet points:\n\n"
+                f"{llm_text}"
+            )
+            with st.spinner("Writing summary..."):
+                st.session_state.pdf_summary = ask_ai(prompt)
+
+        if "pdf_summary" in st.session_state:
+            st.markdown(st.session_state.pdf_summary)
+            st.download_button(
+                "📥 Download Summary (.txt)",
+                data=st.session_state.pdf_summary,
+                file_name=f"summary_{uploaded_file.name}.txt",
+                mime="text/plain",
+            )
+
+    # ── TAB 3 — Quiz ─────────────────────────
+    with tab_quiz:
+        st.markdown("### ❓ Practice Quiz Generator")
+        if st.button("Generate 10 Practice Questions"):
+            prompt = (
+                "Create exactly 10 Multiple Choice Questions from the text below.\n"
+                "Format each question cleanly with Options A, B, C, D, followed by Correct Answer and Explanation:\n\n"
+                f"{llm_text}"
+            )
+            with st.spinner("Generating quiz questions..."):
+                st.session_state.pdf_quiz = ask_ai(prompt)
+
+        if "pdf_quiz" in st.session_state:
+            st.markdown(st.session_state.pdf_quiz)
+            st.download_button(
+                "📥 Download Quiz (.txt)",
+                data=st.session_state.pdf_quiz,
+                file_name=f"quiz_{uploaded_file.name}.txt",
+                mime="text/plain",
+            )
+
+    # ── TAB 4 — Document Text ────────────────
+    with tab_doc:
+        st.markdown("### 📖 Extracted Plain Text")
+        st.text_area("Document Contents", text, height=450)
+else:
+    st.info("👆 **Get started:** Upload any PDF document using the file box above.")

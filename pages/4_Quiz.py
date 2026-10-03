@@ -1,67 +1,108 @@
 """
-AI-Student Assistant — Quiz Generator Page
+AI-Student Assistant — Quiz Generator
 """
 
 import streamlit as st
 from utils.ai_engine import ask_ai
 
-# ── Page Config ──────────────────────────────
-st.set_page_config(page_title="Quiz Generator", page_icon="❓", layout="wide")
+st.set_page_config(
+    page_title="Quiz Generator — AI-Student Assistant",
+    page_icon="❓",
+    layout="wide",
+)
 
-# ── CSS ──────────────────────────────────────
 st.markdown("""
 <style>
-.stApp {
-    background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 50%, #f0f4ff 100%);
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+html, body, [class*="css"], .stApp {
+    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif !important;
+    background-color: #FAFAFC !important;
+    color: #0F172A !important;
+}
+.page-hero {
+    background: #FFFFFF;
+    border: 1px solid #EAECEF;
+    border-radius: 20px;
+    padding: 28px 32px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+.page-hero h1 {
+    font-size: 28px !important;
+    font-weight: 800 !important;
+    color: #0F172A !important;
+    margin: 0 0 6px 0 !important;
+}
+.page-hero p {
+    color: #64748B !important;
+    font-size: 15px !important;
+    margin: 0 !important;
+}
+.quiz-card {
+    background: #FFFFFF;
+    border: 1px solid #EAECEF;
+    border-radius: 16px;
+    padding: 28px;
+    margin-top: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+    line-height: 1.7;
 }
 .stButton button {
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: white;
-    border-radius: 12px;
-    border: none;
-    font-weight: 600;
+    background: linear-gradient(135deg, #4F46E5 0%, #4338CA 100%) !important;
+    color: #FFFFFF !important;
+    border: none !important;
+    border-radius: 10px !important;
+    padding: 12px 24px !important;
+    font-weight: 700 !important;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25) !important;
 }
-.stButton button:hover { transform: scale(1.03); }
 </style>
 """, unsafe_allow_html=True)
 
-# ── UI ───────────────────────────────────────
-st.title("❓ AI Quiz Generator")
-st.write("Generate AI-based MCQs from your study material.")
-st.divider()
+st.markdown("""
+<div class="page-hero">
+    <h1>❓ Interactive Quiz Generator</h1>
+    <p>Test your knowledge with AI-generated multiple choice questions, answer keys, and explanations.</p>
+</div>
+""", unsafe_allow_html=True)
 
-content = st.text_area(
-    "📚 Enter Topic or Notes",
-    height=250,
-    placeholder="Example: Explain Neural Networks...",
-)
+col_text, col_opts = st.columns([3, 1])
 
-difficulty = st.selectbox("🎯 Select Difficulty", ["Easy", "Medium", "Hard"])
-number = st.slider("Number of Questions", 1, 10, 5)
+with col_opts:
+    difficulty = st.selectbox("🎯 Difficulty", ["Easy", "Medium", "Hard"])
+    num_questions = st.slider("Number of Questions", min_value=1, max_value=10, value=5)
+    include_exp = st.checkbox("Include Explanations", value=True)
 
-if st.button("🚀 Generate Quiz"):
-    if content:
-        with st.spinner("🤖 Creating Quiz..."):
+with col_text:
+    topic_content = st.text_area(
+        "Enter Syllabus Topic or Study Notes:",
+        height=260,
+        placeholder="e.g. Newton's Laws of Motion, Cellular Respiration, Operating Systems Memory Management...",
+    )
+
+if st.button("🚀 Generate Practice Quiz", use_container_width=True):
+    if topic_content.strip():
+        with st.spinner("Generating custom test questions..."):
             prompt = (
-                f"You are an expert teacher.\n\n"
-                f"Create exactly {number} {difficulty} level MCQs from the following notes.\n\n"
-                "Rules:\n"
-                "- Every question must have 4 options (A, B, C, D).\n"
-                "- Only one correct answer.\n"
-                "- Questions must be based only on the notes.\n"
-                "- Do not repeat questions.\n"
-                "- Return only the quiz.\n\n"
-                f"Notes:\n{content}"
+                f"You are an expert academic examiner.\n"
+                f"Generate exactly {num_questions} {difficulty}-level Multiple Choice Questions (MCQs) "
+                f"based on the study material below.\n\n"
+                f"Rules:\n"
+                f"- Format each question clearly with Options A, B, C, D.\n"
+                f"- Include the Correct Answer clearly identified.\n"
+                f"- {'Provide a brief explanation for the correct answer.' if include_exp else 'Do not include explanation.'}\n\n"
+                f"Material:\n{topic_content}"
             )
-            quiz = ask_ai(prompt)
+            quiz_result = ask_ai(prompt)
 
-        st.success("✅ Quiz Generated Successfully!")
-        st.markdown(quiz)
+        st.markdown("### 📋 Generated Quiz")
+        st.markdown(f'<div class="quiz-card">{quiz_result}</div>', unsafe_allow_html=True)
+
+        st.download_button(
+            "📥 Download Quiz (.txt)",
+            data=quiz_result,
+            file_name="practice_quiz.txt",
+            mime="text/plain",
+        )
     else:
-        st.warning("⚠ Please enter notes/topic first.")
-
-st.divider()
-st.info(
-    "🚀 **Features:** AI MCQ Generation • Automatic Answers • "
-    "Difficulty Selection • Groq AI Powered"
-)
+        st.warning("Please enter a topic or study notes first.")
